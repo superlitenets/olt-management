@@ -303,7 +303,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/onus/:id/tr069/link", isAuthenticated, async (req, res) => {
+  app.post("/api/onus/:id/tr069/link", isAuthenticated, async (req: any, res) => {
     try {
       const onu = await storage.getOnu(req.params.id);
       if (!onu) {
@@ -316,6 +316,11 @@ export async function registerRoutes(
       const tr069Device = await storage.getTr069Device(tr069DeviceId);
       if (!tr069Device) {
         return res.status(404).json({ message: "TR-069 device not found" });
+      }
+      // Verify tenant ownership to prevent cross-tenant linkage
+      const tenantId = await resolveTenantId(req);
+      if (onu.tenantId !== tenantId || tr069Device.tenantId !== tenantId) {
+        return res.status(403).json({ message: "Access denied: devices belong to different tenants" });
       }
       const linked = await storage.linkTr069DeviceToOnu(tr069DeviceId, req.params.id);
       broadcast("onu:tr069Linked", { onuId: req.params.id, tr069DeviceId });

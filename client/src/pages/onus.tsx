@@ -41,6 +41,8 @@ import { EmptyState } from "@/components/empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Label } from "@/components/ui/label";
 import {
   Plus,
   Search,
@@ -53,14 +55,21 @@ import {
   Download,
   Filter,
   X,
+  Wifi,
+  Phone,
+  Link2,
+  Activity,
+  RotateCcw,
+  FileText,
 } from "lucide-react";
-import type { Onu, Olt, ServiceProfile } from "@shared/schema";
+import type { Onu, Olt, ServiceProfile, Tr069Device } from "@shared/schema";
 
 export default function OnusPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [oltFilter, setOltFilter] = useState<string>("all");
   const [selectedOnu, setSelectedOnu] = useState<Onu | null>(null);
+  const [activeTab, setActiveTab] = useState("details");
   const { toast } = useToast();
 
   const { data: onus, isLoading } = useQuery<Onu[]>({
@@ -73,6 +82,64 @@ export default function OnusPage() {
 
   const { data: serviceProfiles } = useQuery<ServiceProfile[]>({
     queryKey: ["/api/service-profiles"],
+  });
+
+  const { data: tr069Devices } = useQuery<Tr069Device[]>({
+    queryKey: ["/api/tr069/devices"],
+  });
+
+  const { data: linkedTr069Device, refetch: refetchLinkedDevice } = useQuery<Tr069Device | null>({
+    queryKey: selectedOnu ? [`/api/onus/${selectedOnu.id}/tr069`] : ["/api/onus/tr069-placeholder"],
+    enabled: !!selectedOnu,
+  });
+
+  const linkTr069Mutation = useMutation({
+    mutationFn: async ({ onuId, tr069DeviceId }: { onuId: string; tr069DeviceId: string }) => {
+      return apiRequest("POST", `/api/onus/${onuId}/tr069/link`, { tr069DeviceId });
+    },
+    onSuccess: () => {
+      refetchLinkedDevice();
+      queryClient.invalidateQueries({ queryKey: ["/api/tr069/devices"] });
+      toast({
+        title: "Device Linked",
+        description: "TR-069 device has been linked to this ONU",
+      });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        window.location.href = "/api/login";
+        return;
+      }
+      toast({
+        title: "Error",
+        description: "Failed to link TR-069 device",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const createTr069TaskMutation = useMutation({
+    mutationFn: async ({ onuId, taskType, parameters }: { onuId: string; taskType: string; parameters?: any }) => {
+      return apiRequest("POST", `/api/onus/${onuId}/tr069/tasks`, { taskType, parameters });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onus", variables.onuId, "tr069", "tasks"] });
+      toast({
+        title: "Task Created",
+        description: "TR-069 task has been queued for execution",
+      });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        window.location.href = "/api/login";
+        return;
+      }
+      toast({
+        title: "Error",
+        description: "Failed to create TR-069 task",
+        variant: "destructive",
+      });
+    },
   });
 
   const restartMutation = useMutation({
@@ -333,145 +400,319 @@ export default function OnusPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={!!selectedOnu} onOpenChange={() => setSelectedOnu(null)}>
-        <DialogContent className="max-w-2xl">
+      <Dialog open={!!selectedOnu} onOpenChange={() => { setSelectedOnu(null); setActiveTab("details"); }}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>ONU Details</DialogTitle>
             <DialogDescription>
-              {selectedOnu?.serialNumber}
+              {selectedOnu?.serialNumber} {selectedOnu?.name && `- ${selectedOnu.name}`}
             </DialogDescription>
           </DialogHeader>
           {selectedOnu && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Serial Number
-                  </label>
-                  <p className="font-mono">{selectedOnu.serialNumber}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    MAC Address
-                  </label>
-                  <p className="font-mono">{selectedOnu.macAddress || "-"}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Status
-                  </label>
-                  <div className="mt-1">
-                    <StatusBadge status={selectedOnu.status || "offline"} />
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Signal Quality
-                  </label>
-                  <div className="mt-1">
-                    <SignalIndicator rxPower={selectedOnu.rxPower} />
-                  </div>
-                </div>
-              </div>
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="details" data-testid="tab-onu-details">
+                  <Eye className="h-4 w-4 mr-2" />
+                  Details
+                </TabsTrigger>
+                <TabsTrigger value="tr069" data-testid="tab-onu-tr069">
+                  <Settings className="h-4 w-4 mr-2" />
+                  TR-069/ACS
+                </TabsTrigger>
+              </TabsList>
 
-              <div className="border-t pt-4">
-                <h4 className="text-sm font-medium mb-3">Network Configuration</h4>
+              <TabsContent value="details" className="space-y-6 mt-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      IP Mode
+                      Serial Number
                     </label>
-                    <p>{selectedOnu.ipMode?.toUpperCase() || "DHCP"}</p>
+                    <p className="font-mono">{selectedOnu.serialNumber}</p>
                   </div>
                   <div>
                     <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      IP Address
+                      MAC Address
                     </label>
-                    <p className="font-mono">{selectedOnu.ipAddress || "-"}</p>
+                    <p className="font-mono">{selectedOnu.macAddress || "-"}</p>
                   </div>
                   <div>
                     <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Mode
+                      Status
                     </label>
-                    <p>{selectedOnu.mode?.toUpperCase() || "BRIDGE"}</p>
+                    <div className="mt-1">
+                      <StatusBadge status={selectedOnu.status || "offline"} />
+                    </div>
                   </div>
                   <div>
                     <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Service Profile
+                      Signal Quality
                     </label>
-                    <p>{getProfileName(selectedOnu.serviceProfileId)}</p>
+                    <div className="mt-1">
+                      <SignalIndicator rxPower={selectedOnu.rxPower} />
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="border-t pt-4">
-                <h4 className="text-sm font-medium mb-3">Optical Levels</h4>
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      RX Power
-                    </label>
-                    <p className="font-mono">
-                      {selectedOnu.rxPower?.toFixed(2) || "-"} dBm
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      TX Power
-                    </label>
-                    <p className="font-mono">
-                      {selectedOnu.txPower?.toFixed(2) || "-"} dBm
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Distance
-                    </label>
-                    <p className="font-mono">
-                      {selectedOnu.distance?.toFixed(2) || "-"} km
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {selectedOnu.subscriberName && (
                 <div className="border-t pt-4">
-                  <h4 className="text-sm font-medium mb-3">Subscriber Info</h4>
+                  <h4 className="text-sm font-medium mb-3">Network Configuration</h4>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Name
+                        IP Mode
                       </label>
-                      <p>{selectedOnu.subscriberName}</p>
+                      <p>{selectedOnu.ipMode?.toUpperCase() || "DHCP"}</p>
                     </div>
                     <div>
                       <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Phone
+                        IP Address
                       </label>
-                      <p>{selectedOnu.subscriberPhone || "-"}</p>
+                      <p className="font-mono">{selectedOnu.ipAddress || "-"}</p>
                     </div>
-                    {selectedOnu.subscriberAddress && (
-                      <div className="col-span-2">
-                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          Address
-                        </label>
-                        <p>{selectedOnu.subscriberAddress}</p>
-                      </div>
-                    )}
+                    <div>
+                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Mode
+                      </label>
+                      <p>{selectedOnu.mode?.toUpperCase() || "BRIDGE"}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Service Profile
+                      </label>
+                      <p>{getProfileName(selectedOnu.serviceProfileId)}</p>
+                    </div>
                   </div>
                 </div>
-              )}
 
-              <div className="flex justify-end gap-3 pt-4 border-t">
-                <Button variant="outline" onClick={() => setSelectedOnu(null)}>
+                <div className="border-t pt-4">
+                  <h4 className="text-sm font-medium mb-3">Optical Levels</h4>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        RX Power
+                      </label>
+                      <p className="font-mono">
+                        {selectedOnu.rxPower?.toFixed(2) || "-"} dBm
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        TX Power
+                      </label>
+                      <p className="font-mono">
+                        {selectedOnu.txPower?.toFixed(2) || "-"} dBm
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Distance
+                      </label>
+                      <p className="font-mono">
+                        {selectedOnu.distance?.toFixed(2) || "-"} km
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {selectedOnu.subscriberName && (
+                  <div className="border-t pt-4">
+                    <h4 className="text-sm font-medium mb-3">Subscriber Info</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          Name
+                        </label>
+                        <p>{selectedOnu.subscriberName}</p>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          Phone
+                        </label>
+                        <p>{selectedOnu.subscriberPhone || "-"}</p>
+                      </div>
+                      {selectedOnu.subscriberAddress && (
+                        <div className="col-span-2">
+                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Address
+                          </label>
+                          <p>{selectedOnu.subscriberAddress}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="tr069" className="space-y-6 mt-4">
+                {linkedTr069Device ? (
+                  <>
+                    <div className="p-4 bg-muted/50 rounded-lg">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-primary/10 rounded-md">
+                            <Activity className="h-5 w-5 text-primary" />
+                          </div>
+                          <div>
+                            <p className="font-medium">{linkedTr069Device.deviceId}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {linkedTr069Device.manufacturer} {linkedTr069Device.productClass}
+                            </p>
+                          </div>
+                        </div>
+                        <StatusBadge status={linkedTr069Device.isOnline ? "online" : "offline"} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4 mt-4 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">Serial Number:</span>
+                          <span className="ml-2 font-mono">{linkedTr069Device.serialNumber || "-"}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Software Version:</span>
+                          <span className="ml-2 font-mono">{linkedTr069Device.softwareVersion || "-"}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Connection IP:</span>
+                          <span className="ml-2 font-mono">{linkedTr069Device.connectionRequestUrl?.split("/")[2]?.split(":")[0] || "-"}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Last Inform:</span>
+                          <span className="ml-2">
+                            {linkedTr069Device.lastInformTime
+                              ? new Date(linkedTr069Device.lastInformTime).toLocaleString()
+                              : "Never"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border-t pt-4">
+                      <h4 className="text-sm font-medium mb-3">Quick Actions</h4>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <Button
+                          variant="outline"
+                          className="flex flex-col items-center gap-2 h-auto py-4"
+                          onClick={() => createTr069TaskMutation.mutate({
+                            onuId: selectedOnu.id,
+                            taskType: "getParameterValues",
+                            parameters: { parameterNames: ["Device."] }
+                          })}
+                          disabled={createTr069TaskMutation.isPending}
+                          data-testid="button-tr069-get-params"
+                        >
+                          <FileText className="h-5 w-5" />
+                          <span className="text-xs">Get Parameters</span>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="flex flex-col items-center gap-2 h-auto py-4"
+                          onClick={() => createTr069TaskMutation.mutate({
+                            onuId: selectedOnu.id,
+                            taskType: "setParameterValues",
+                            parameters: {
+                              parameterList: [
+                                { name: "Device.WiFi.SSID.1.SSID", value: "ONU_WiFi" },
+                                { name: "Device.WiFi.SSID.1.Enable", value: "1" }
+                              ]
+                            }
+                          })}
+                          disabled={createTr069TaskMutation.isPending}
+                          data-testid="button-tr069-wifi"
+                        >
+                          <Wifi className="h-5 w-5" />
+                          <span className="text-xs">Configure WiFi</span>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="flex flex-col items-center gap-2 h-auto py-4"
+                          onClick={() => createTr069TaskMutation.mutate({
+                            onuId: selectedOnu.id,
+                            taskType: "setParameterValues",
+                            parameters: {
+                              parameterList: [
+                                { name: "Device.Services.VoiceService.1.VoiceProfile.1.Enable", value: "Enabled" }
+                              ]
+                            }
+                          })}
+                          disabled={createTr069TaskMutation.isPending}
+                          data-testid="button-tr069-voip"
+                        >
+                          <Phone className="h-5 w-5" />
+                          <span className="text-xs">Configure VoIP</span>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="flex flex-col items-center gap-2 h-auto py-4"
+                          onClick={() => createTr069TaskMutation.mutate({
+                            onuId: selectedOnu.id,
+                            taskType: "reboot",
+                            parameters: {}
+                          })}
+                          disabled={createTr069TaskMutation.isPending}
+                          data-testid="button-tr069-reboot"
+                        >
+                          <RotateCcw className="h-5 w-5" />
+                          <span className="text-xs">Reboot Device</span>
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="border-t pt-4">
+                      <h4 className="text-sm font-medium mb-3">Advanced Configuration</h4>
+                      <p className="text-sm text-muted-foreground mb-3">
+                        Use the TR-069/ACS page for advanced device configuration, firmware updates, and detailed parameter management.
+                      </p>
+                      <Button variant="secondary" size="sm" asChild>
+                        <a href={`/tr069?device=${linkedTr069Device.id}`} data-testid="link-tr069-advanced">
+                          Open TR-069 Management
+                        </a>
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center py-8">
+                    <div className="p-4 bg-muted/50 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                      <Link2 className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                    <h4 className="font-medium mb-2">No TR-069 Device Linked</h4>
+                    <p className="text-sm text-muted-foreground mb-4 max-w-sm mx-auto">
+                      Link this ONU to a TR-069/ACS managed device to enable remote configuration of WiFi, VoIP, and other services.
+                    </p>
+                    {tr069Devices && tr069Devices.filter(d => !d.onuId).length > 0 ? (
+                      <div className="space-y-3">
+                        <Label className="text-sm">Select a TR-069 Device to Link</Label>
+                        <Select
+                          onValueChange={(value) => linkTr069Mutation.mutate({
+                            onuId: selectedOnu.id,
+                            tr069DeviceId: value
+                          })}
+                          disabled={linkTr069Mutation.isPending}
+                        >
+                          <SelectTrigger className="w-64 mx-auto" data-testid="select-tr069-device">
+                            <SelectValue placeholder="Select device..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {tr069Devices.filter(d => !d.onuId).map((device) => (
+                              <SelectItem key={device.id} value={device.id}>
+                                {device.deviceId} ({device.manufacturer})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        No unlinked TR-069 devices available. New devices will appear once they connect to the ACS server.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </TabsContent>
+
+              <div className="flex justify-end gap-3 pt-4 border-t mt-6">
+                <Button variant="outline" onClick={() => { setSelectedOnu(null); setActiveTab("details"); }}>
                   Close
                 </Button>
-                <Button>
-                  <Settings className="h-4 w-4 mr-2" />
-                  Configure
-                </Button>
               </div>
-            </div>
+            </Tabs>
           )}
         </DialogContent>
       </Dialog>
