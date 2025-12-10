@@ -90,10 +90,12 @@ export interface IStorage {
   // TR-069 Device operations
   getTr069Device(id: string): Promise<Tr069Device | undefined>;
   getTr069DeviceByDeviceId(deviceId: string): Promise<Tr069Device | undefined>;
+  getTr069DeviceByOnuId(onuId: string): Promise<Tr069Device | undefined>;
   getTr069Devices(tenantId?: string): Promise<Tr069Device[]>;
   createTr069Device(device: InsertTr069Device): Promise<Tr069Device>;
   updateTr069Device(id: string, device: Partial<Tr069Device>): Promise<Tr069Device | undefined>;
   deleteTr069Device(id: string): Promise<boolean>;
+  linkTr069DeviceToOnu(tr069DeviceId: string, onuId: string): Promise<Tr069Device | undefined>;
   
   // TR-069 Task operations
   getTr069Task(id: string): Promise<Tr069Task | undefined>;
@@ -377,6 +379,11 @@ export class DatabaseStorage implements IStorage {
     return device;
   }
 
+  async getTr069DeviceByOnuId(onuId: string): Promise<Tr069Device | undefined> {
+    const [device] = await db.select().from(tr069Devices).where(eq(tr069Devices.onuId, onuId));
+    return device;
+  }
+
   async getTr069Devices(tenantId?: string): Promise<Tr069Device[]> {
     if (tenantId) {
       return db.select().from(tr069Devices).where(eq(tr069Devices.tenantId, tenantId)).orderBy(desc(tr069Devices.lastInformTime));
@@ -401,6 +408,15 @@ export class DatabaseStorage implements IStorage {
   async deleteTr069Device(id: string): Promise<boolean> {
     const result = await db.delete(tr069Devices).where(eq(tr069Devices.id, id));
     return true;
+  }
+
+  async linkTr069DeviceToOnu(tr069DeviceId: string, onuId: string): Promise<Tr069Device | undefined> {
+    const [updated] = await db
+      .update(tr069Devices)
+      .set({ onuId, updatedAt: new Date() })
+      .where(eq(tr069Devices.id, tr069DeviceId))
+      .returning();
+    return updated;
   }
 
   // TR-069 Task operations

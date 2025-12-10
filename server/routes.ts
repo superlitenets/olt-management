@@ -288,6 +288,92 @@ export async function registerRoutes(
     }
   });
 
+  // ONU TR-069/ACS routes
+  app.get("/api/onus/:id/tr069", isAuthenticated, async (req, res) => {
+    try {
+      const onu = await storage.getOnu(req.params.id);
+      if (!onu) {
+        return res.status(404).json({ message: "ONU not found" });
+      }
+      const tr069Device = await storage.getTr069DeviceByOnuId(req.params.id);
+      res.json(tr069Device || null);
+    } catch (error) {
+      console.error("Error fetching ONU TR-069 device:", error);
+      res.status(500).json({ message: "Failed to fetch TR-069 device" });
+    }
+  });
+
+  app.post("/api/onus/:id/tr069/link", isAuthenticated, async (req, res) => {
+    try {
+      const onu = await storage.getOnu(req.params.id);
+      if (!onu) {
+        return res.status(404).json({ message: "ONU not found" });
+      }
+      const { tr069DeviceId } = req.body;
+      if (!tr069DeviceId) {
+        return res.status(400).json({ message: "tr069DeviceId is required" });
+      }
+      const tr069Device = await storage.getTr069Device(tr069DeviceId);
+      if (!tr069Device) {
+        return res.status(404).json({ message: "TR-069 device not found" });
+      }
+      const linked = await storage.linkTr069DeviceToOnu(tr069DeviceId, req.params.id);
+      broadcast("onu:tr069Linked", { onuId: req.params.id, tr069DeviceId });
+      res.json(linked);
+    } catch (error) {
+      console.error("Error linking TR-069 device to ONU:", error);
+      res.status(500).json({ message: "Failed to link TR-069 device" });
+    }
+  });
+
+  app.post("/api/onus/:id/tr069/tasks", isAuthenticated, async (req, res) => {
+    try {
+      const onu = await storage.getOnu(req.params.id);
+      if (!onu) {
+        return res.status(404).json({ message: "ONU not found" });
+      }
+      const tr069Device = await storage.getTr069DeviceByOnuId(req.params.id);
+      if (!tr069Device) {
+        return res.status(404).json({ message: "No TR-069 device linked to this ONU" });
+      }
+      const { taskType, parameters } = req.body;
+      if (!taskType) {
+        return res.status(400).json({ message: "taskType is required" });
+      }
+      const tenantId = await resolveTenantId(req);
+      const task = await storage.createTr069Task({
+        tenantId,
+        deviceId: tr069Device.id,
+        taskType,
+        parameters: parameters || {},
+        status: "pending",
+      });
+      broadcast("tr069Task:created", task);
+      res.status(201).json(task);
+    } catch (error) {
+      console.error("Error creating TR-069 task for ONU:", error);
+      res.status(500).json({ message: "Failed to create TR-069 task" });
+    }
+  });
+
+  app.get("/api/onus/:id/tr069/tasks", isAuthenticated, async (req, res) => {
+    try {
+      const onu = await storage.getOnu(req.params.id);
+      if (!onu) {
+        return res.status(404).json({ message: "ONU not found" });
+      }
+      const tr069Device = await storage.getTr069DeviceByOnuId(req.params.id);
+      if (!tr069Device) {
+        return res.json([]);
+      }
+      const tasks = await storage.getTr069Tasks(tr069Device.id);
+      res.json(tasks);
+    } catch (error) {
+      console.error("Error fetching TR-069 tasks for ONU:", error);
+      res.status(500).json({ message: "Failed to fetch TR-069 tasks" });
+    }
+  });
+
   // Service Profile routes
   app.get("/api/service-profiles", isAuthenticated, async (req, res) => {
     try {
