@@ -65,7 +65,12 @@ export default function Tr069Page() {
   const [activeTab, setActiveTab] = useState("devices");
   const [selectedDevice, setSelectedDevice] = useState<Tr069Device | null>(null);
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deviceToDelete, setDeviceToDelete] = useState<Tr069Device | null>(null);
   const [taskType, setTaskType] = useState<string>("");
+  const [parameterPaths, setParameterPaths] = useState("");
+  const [setParameterJson, setSetParameterJson] = useState("");
+  const [selectedFirmware, setSelectedFirmware] = useState("");
   const { toast } = useToast();
 
   const { data: devices, isLoading: devicesLoading } = useQuery<Tr069Device[]>({
@@ -122,6 +127,8 @@ export default function Tr069Page() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tr069/devices"] });
+      setDeleteDialogOpen(false);
+      setDeviceToDelete(null);
       toast({
         title: "Device Deleted",
         description: "The device has been removed",
@@ -141,7 +148,7 @@ export default function Tr069Page() {
       }
       toast({
         title: "Error",
-        description: "Failed to delete device",
+        description: "Failed to delete device. Please try again.",
         variant: "destructive",
       });
     },
@@ -161,6 +168,9 @@ export default function Tr069Page() {
   const handleCreateTask = (device: Tr069Device, type: string) => {
     setSelectedDevice(device);
     setTaskType(type);
+    setParameterPaths("");
+    setSetParameterJson("");
+    setSelectedFirmware("");
     
     if (type === "reboot" || type === "factory_reset") {
       createTaskMutation.mutate({
@@ -170,6 +180,50 @@ export default function Tr069Page() {
     } else {
       setTaskDialogOpen(true);
     }
+  };
+
+  const handleDeleteDevice = (device: Tr069Device) => {
+    setDeviceToDelete(device);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteDevice = () => {
+    if (deviceToDelete) {
+      deleteDeviceMutation.mutate(deviceToDelete.id);
+    }
+  };
+
+  const submitTask = () => {
+    if (!selectedDevice) return;
+    
+    const parameters: Record<string, any> = {};
+    
+    if (taskType === "get_parameter_values" && parameterPaths) {
+      parameters.paths = parameterPaths.split(",").map(p => p.trim());
+    }
+    
+    if (taskType === "set_parameter_values" && setParameterJson) {
+      try {
+        parameters.values = JSON.parse(setParameterJson);
+      } catch (e) {
+        toast({
+          title: "Invalid JSON",
+          description: "Please enter valid JSON for the parameter values",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    
+    if (taskType === "download" && selectedFirmware) {
+      parameters.firmwareId = selectedFirmware;
+    }
+    
+    createTaskMutation.mutate({
+      deviceId: selectedDevice.id,
+      taskType: taskType,
+      parameters: Object.keys(parameters).length > 0 ? parameters : undefined,
+    });
   };
 
   const getTaskStatusBadge = (status: string) => {
@@ -341,7 +395,7 @@ export default function Tr069Page() {
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
-                                onClick={() => deleteDeviceMutation.mutate(device.id)}
+                                onClick={() => handleDeleteDevice(device)}
                                 className="text-destructive"
                                 data-testid="menu-delete-device"
                               >
@@ -550,15 +604,29 @@ export default function Tr069Page() {
                 <label className="text-sm font-medium">Parameter Paths</label>
                 <Input
                   placeholder="e.g., InternetGatewayDevice.DeviceInfo."
+                  value={parameterPaths}
+                  onChange={(e) => setParameterPaths(e.target.value)}
                   data-testid="input-parameter-paths"
                 />
                 <p className="text-xs text-muted-foreground">Enter comma-separated parameter paths</p>
               </div>
             )}
+            {taskType === "set_parameter_values" && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Parameters (JSON)</label>
+                <Input
+                  placeholder='e.g., {"InternetGatewayDevice.DeviceInfo.FriendlyName": "MyDevice"}'
+                  value={setParameterJson}
+                  onChange={(e) => setSetParameterJson(e.target.value)}
+                  data-testid="input-set-parameters"
+                />
+                <p className="text-xs text-muted-foreground">Enter parameter name and value pairs as JSON</p>
+              </div>
+            )}
             {taskType === "download" && (
               <div className="space-y-2">
                 <label className="text-sm font-medium">Firmware</label>
-                <Select>
+                <Select value={selectedFirmware} onValueChange={setSelectedFirmware}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select firmware" />
                   </SelectTrigger>
@@ -578,18 +646,35 @@ export default function Tr069Page() {
               Cancel
             </Button>
             <Button
-              onClick={() => {
-                if (selectedDevice) {
-                  createTaskMutation.mutate({
-                    deviceId: selectedDevice.id,
-                    taskType: taskType,
-                  });
-                }
-              }}
+              onClick={submitTask}
               disabled={createTaskMutation.isPending}
               data-testid="button-submit-task"
             >
               {createTaskMutation.isPending ? "Creating..." : "Create Task"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Device</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete device "{deviceToDelete?.serialNumber || deviceToDelete?.deviceId}"? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDeleteDevice}
+              disabled={deleteDeviceMutation.isPending}
+              data-testid="button-confirm-delete"
+            >
+              {deleteDeviceMutation.isPending ? "Deleting..." : "Delete"}
             </Button>
           </div>
         </DialogContent>
