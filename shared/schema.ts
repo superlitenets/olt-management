@@ -75,7 +75,8 @@ export const olts = pgTable("olts", {
   vendor: oltVendorEnum("vendor").notNull(),
   model: varchar("model", { length: 100 }),
   ipAddress: varchar("ip_address", { length: 45 }).notNull(),
-  snmpCommunity: varchar("snmp_community", { length: 100 }).default("public"),
+  snmpCommunity: varchar("snmp_community", { length: 100 }).default("public"), // Read-only community
+  snmpWriteCommunity: varchar("snmp_write_community", { length: 100 }), // Read-write community
   snmpPort: integer("snmp_port").default(161),
   sshUsername: varchar("ssh_username", { length: 100 }),
   sshPassword: varchar("ssh_password", { length: 255 }),
