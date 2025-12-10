@@ -119,11 +119,28 @@ A comprehensive OLT (Optical Line Terminal) Management System for multi-vendor G
 
 ## Running the Application
 
-### Development
+### Development (Replit)
 ```bash
 npm run dev
 ```
 Starts Express server with Vite HMR on port 5000.
+
+### Docker
+```bash
+# Start with Docker Compose (includes PostgreSQL)
+docker-compose up -d
+
+# Or build and run manually
+docker build -t olt-management .
+docker run -p 5000:5000 -p 7547:7547 \
+  -e DATABASE_URL=postgresql://user:pass@host:5432/db \
+  -e SESSION_SECRET=your-secret \
+  olt-management
+```
+
+Ports:
+- `5000` - Web application
+- `7547` - TR-069/ACS server
 
 ### Database
 ```bash

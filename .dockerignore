@@ -1,0 +1,13 @@
+node_modules
+dist
+.git
+.gitignore
+*.md
+.env
+.env.*
+.replit
+replit.nix
+*.log
+.DS_Store
+coverage
+.nyc_output
