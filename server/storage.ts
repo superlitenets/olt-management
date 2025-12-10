@@ -6,6 +6,11 @@ import {
   serviceProfiles,
   alerts,
   eventLogs,
+  tr069Devices,
+  tr069Tasks,
+  tr069Presets,
+  tr069Parameters,
+  tr069Firmware,
   type User,
   type UpsertUser,
   type Tenant,
@@ -20,6 +25,14 @@ import {
   type InsertAlert,
   type EventLog,
   type InsertEventLog,
+  type Tr069Device,
+  type InsertTr069Device,
+  type Tr069Task,
+  type InsertTr069Task,
+  type Tr069Preset,
+  type InsertTr069Preset,
+  type Tr069Firmware,
+  type InsertTr069Firmware,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc } from "drizzle-orm";
@@ -67,6 +80,35 @@ export interface IStorage {
   // Event Log operations
   getEventLogs(tenantId?: string, limit?: number): Promise<EventLog[]>;
   createEventLog(log: InsertEventLog): Promise<EventLog>;
+  
+  // TR-069 Device operations
+  getTr069Device(id: string): Promise<Tr069Device | undefined>;
+  getTr069DeviceByDeviceId(deviceId: string): Promise<Tr069Device | undefined>;
+  getTr069Devices(tenantId?: string): Promise<Tr069Device[]>;
+  createTr069Device(device: InsertTr069Device): Promise<Tr069Device>;
+  updateTr069Device(id: string, device: Partial<InsertTr069Device>): Promise<Tr069Device | undefined>;
+  deleteTr069Device(id: string): Promise<boolean>;
+  
+  // TR-069 Task operations
+  getTr069Task(id: string): Promise<Tr069Task | undefined>;
+  getTr069Tasks(deviceId?: string): Promise<Tr069Task[]>;
+  getPendingTr069Tasks(deviceId: string): Promise<Tr069Task[]>;
+  createTr069Task(task: InsertTr069Task): Promise<Tr069Task>;
+  updateTr069Task(id: string, task: Partial<InsertTr069Task>): Promise<Tr069Task | undefined>;
+  deleteTr069Task(id: string): Promise<boolean>;
+  
+  // TR-069 Preset operations
+  getTr069Preset(id: string): Promise<Tr069Preset | undefined>;
+  getTr069Presets(tenantId?: string): Promise<Tr069Preset[]>;
+  createTr069Preset(preset: InsertTr069Preset): Promise<Tr069Preset>;
+  updateTr069Preset(id: string, preset: Partial<InsertTr069Preset>): Promise<Tr069Preset | undefined>;
+  deleteTr069Preset(id: string): Promise<boolean>;
+  
+  // TR-069 Firmware operations
+  getTr069Firmware(id: string): Promise<Tr069Firmware | undefined>;
+  getTr069FirmwareList(tenantId?: string): Promise<Tr069Firmware[]>;
+  createTr069Firmware(firmware: InsertTr069Firmware): Promise<Tr069Firmware>;
+  deleteTr069Firmware(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -302,6 +344,138 @@ export class DatabaseStorage implements IStorage {
   async createEventLog(log: InsertEventLog): Promise<EventLog> {
     const [created] = await db.insert(eventLogs).values(log).returning();
     return created;
+  }
+
+  // TR-069 Device operations
+  async getTr069Device(id: string): Promise<Tr069Device | undefined> {
+    const [device] = await db.select().from(tr069Devices).where(eq(tr069Devices.id, id));
+    return device;
+  }
+
+  async getTr069DeviceByDeviceId(deviceId: string): Promise<Tr069Device | undefined> {
+    const [device] = await db.select().from(tr069Devices).where(eq(tr069Devices.deviceId, deviceId));
+    return device;
+  }
+
+  async getTr069Devices(tenantId?: string): Promise<Tr069Device[]> {
+    if (tenantId) {
+      return db.select().from(tr069Devices).where(eq(tr069Devices.tenantId, tenantId)).orderBy(desc(tr069Devices.lastInformTime));
+    }
+    return db.select().from(tr069Devices).orderBy(desc(tr069Devices.lastInformTime));
+  }
+
+  async createTr069Device(device: InsertTr069Device): Promise<Tr069Device> {
+    const [created] = await db.insert(tr069Devices).values(device).returning();
+    return created;
+  }
+
+  async updateTr069Device(id: string, device: Partial<InsertTr069Device>): Promise<Tr069Device | undefined> {
+    const [updated] = await db
+      .update(tr069Devices)
+      .set({ ...device, updatedAt: new Date() })
+      .where(eq(tr069Devices.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteTr069Device(id: string): Promise<boolean> {
+    const result = await db.delete(tr069Devices).where(eq(tr069Devices.id, id));
+    return true;
+  }
+
+  // TR-069 Task operations
+  async getTr069Task(id: string): Promise<Tr069Task | undefined> {
+    const [task] = await db.select().from(tr069Tasks).where(eq(tr069Tasks.id, id));
+    return task;
+  }
+
+  async getTr069Tasks(deviceId?: string): Promise<Tr069Task[]> {
+    if (deviceId) {
+      return db.select().from(tr069Tasks).where(eq(tr069Tasks.deviceId, deviceId)).orderBy(desc(tr069Tasks.createdAt));
+    }
+    return db.select().from(tr069Tasks).orderBy(desc(tr069Tasks.createdAt));
+  }
+
+  async getPendingTr069Tasks(deviceId: string): Promise<Tr069Task[]> {
+    return db
+      .select()
+      .from(tr069Tasks)
+      .where(and(eq(tr069Tasks.deviceId, deviceId), eq(tr069Tasks.status, "pending")))
+      .orderBy(tr069Tasks.createdAt);
+  }
+
+  async createTr069Task(task: InsertTr069Task): Promise<Tr069Task> {
+    const [created] = await db.insert(tr069Tasks).values(task).returning();
+    return created;
+  }
+
+  async updateTr069Task(id: string, task: Partial<InsertTr069Task>): Promise<Tr069Task | undefined> {
+    const [updated] = await db
+      .update(tr069Tasks)
+      .set(task)
+      .where(eq(tr069Tasks.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteTr069Task(id: string): Promise<boolean> {
+    await db.delete(tr069Tasks).where(eq(tr069Tasks.id, id));
+    return true;
+  }
+
+  // TR-069 Preset operations
+  async getTr069Preset(id: string): Promise<Tr069Preset | undefined> {
+    const [preset] = await db.select().from(tr069Presets).where(eq(tr069Presets.id, id));
+    return preset;
+  }
+
+  async getTr069Presets(tenantId?: string): Promise<Tr069Preset[]> {
+    if (tenantId) {
+      return db.select().from(tr069Presets).where(eq(tr069Presets.tenantId, tenantId)).orderBy(desc(tr069Presets.weight));
+    }
+    return db.select().from(tr069Presets).orderBy(desc(tr069Presets.weight));
+  }
+
+  async createTr069Preset(preset: InsertTr069Preset): Promise<Tr069Preset> {
+    const [created] = await db.insert(tr069Presets).values(preset).returning();
+    return created;
+  }
+
+  async updateTr069Preset(id: string, preset: Partial<InsertTr069Preset>): Promise<Tr069Preset | undefined> {
+    const [updated] = await db
+      .update(tr069Presets)
+      .set({ ...preset, updatedAt: new Date() })
+      .where(eq(tr069Presets.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteTr069Preset(id: string): Promise<boolean> {
+    await db.delete(tr069Presets).where(eq(tr069Presets.id, id));
+    return true;
+  }
+
+  // TR-069 Firmware operations
+  async getTr069Firmware(id: string): Promise<Tr069Firmware | undefined> {
+    const [firmware] = await db.select().from(tr069Firmware).where(eq(tr069Firmware.id, id));
+    return firmware;
+  }
+
+  async getTr069FirmwareList(tenantId?: string): Promise<Tr069Firmware[]> {
+    if (tenantId) {
+      return db.select().from(tr069Firmware).where(eq(tr069Firmware.tenantId, tenantId)).orderBy(desc(tr069Firmware.createdAt));
+    }
+    return db.select().from(tr069Firmware).orderBy(desc(tr069Firmware.createdAt));
+  }
+
+  async createTr069Firmware(firmware: InsertTr069Firmware): Promise<Tr069Firmware> {
+    const [created] = await db.insert(tr069Firmware).values(firmware).returning();
+    return created;
+  }
+
+  async deleteTr069Firmware(id: string): Promise<boolean> {
+    await db.delete(tr069Firmware).where(eq(tr069Firmware.id, id));
+    return true;
   }
 }
 
