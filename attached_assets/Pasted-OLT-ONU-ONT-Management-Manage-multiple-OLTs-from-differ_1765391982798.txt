@@ -1,0 +1,73 @@
+OLT & ONU/ONT Management
+
+Manage multiple OLTs from different vendors (Huawei, ZTE, etc.) via a single cloud dashboard.
+
+Discover, monitor, and configure ONUs remotely.
+
+Enable zero-touch provisioning — new ONUs activate automatically with minimal manual configuration.
+
+2. ONU Configuration Modes
+
+Supports Static IP, DHCP, and PPPoE for subscribers.
+
+Bridged or routed mode for flexible network deployment.
+
+Configure VLANs per port or per service for traffic segmentation.
+
+3. Service Management
+
+Supports triple-play services: Internet, IPTV, and VoIP.
+
+Per-ONU and per-port service mapping.
+
+Automatic allocation of bandwidth and service profiles.
+
+4. Monitoring & Analytics
+
+Real-time monitoring of ONUs and OLTs: signal strength, link quality, optical power levels, temperature, CPU/memory usage.
+
+Traffic analysis by ONU or port, including bandwidth and packet statistics.
+
+Historical logs for performance tracking and troubleshooting.
+
+5. Alerts & Notifications
+
+Automatic alerts for offline ONUs, signal loss, or network anomalies.
+
+Event logging for all configuration changes and network events.
+
+Supports email and SMS notifications.
+
+6. Remote Access & Troubleshooting
+
+Access subscriber ONUs remotely to manage or troubleshoot issues.
+
+Restart, enable/disable, or reconfigure ONUs without field visits.
+
+7. Multi-Tenant & Role-Based Access
+
+Multi-tenant support allows segmentation of networks by region, ISP, or customer type.
+
+Admins and sub-admins with controlled permissions (RBAC).
+
+8. API Integration
+
+RESTful API allows integration with billing, CRM, and OSS/BSS systems.
+
+Automate provisioning, monitoring, and subscriber management programmatically.
+
+9. Network Flexibility
+
+VLAN tagging, port configuration, and service profiles per ONU.
+
+Supports both GPON and EPON networks (XPON).
+
+Flexible bandwidth allocation and QoS per subscriber.
+
+10. Scalability & Cloud-Based Access
+
+Centralized cloud management for easy expansion.
+
+Manage hundreds or thousands of ONUs from a single interface.
+
+Zero-touch onboarding speeds up new installations.
