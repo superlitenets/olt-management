@@ -69,6 +69,7 @@ export default function OnusPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [oltFilter, setOltFilter] = useState<string>("all");
+  const [authTab, setAuthTab] = useState<"all" | "authorized" | "unauthorized">("all");
   const [selectedOnu, setSelectedOnu] = useState<Onu | null>(null);
   const [activeTab, setActiveTab] = useState("details");
   const { toast } = useToast();
@@ -313,9 +314,20 @@ export default function OnusPage() {
 
     const matchesStatus = statusFilter === "all" || onu.status === statusFilter;
     const matchesOlt = oltFilter === "all" || onu.oltId === oltFilter;
+    
+    // Authorization filter: ONUs with service profiles are considered "authorized"
+    const isAuthorized = !!onu.serviceProfileId;
+    const matchesAuth = 
+      authTab === "all" || 
+      (authTab === "authorized" && isAuthorized) || 
+      (authTab === "unauthorized" && !isAuthorized);
 
-    return matchesSearch && matchesStatus && matchesOlt;
+    return matchesSearch && matchesStatus && matchesOlt && matchesAuth;
   });
+  
+  // Count for badges
+  const authorizedCount = onus?.filter(o => !!o.serviceProfileId).length || 0;
+  const unauthorizedCount = onus?.filter(o => !o.serviceProfileId).length || 0;
 
   const getOltName = (oltId: string) => {
     return olts?.find((o) => o.id === oltId)?.name || "Unknown";
@@ -398,6 +410,24 @@ export default function OnusPage() {
           </Button>
         </div>
       </div>
+
+      {/* Authorization Tabs */}
+      <Tabs value={authTab} onValueChange={(v) => setAuthTab(v as "all" | "authorized" | "unauthorized")}>
+        <TabsList data-testid="tabs-auth-filter">
+          <TabsTrigger value="all" data-testid="tab-all">
+            All
+            <Badge variant="secondary" className="ml-2">{onus?.length || 0}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="authorized" data-testid="tab-authorized">
+            Authorized
+            <Badge variant="secondary" className="ml-2">{authorizedCount}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="unauthorized" data-testid="tab-unauthorized">
+            Unauthorized
+            <Badge variant="secondary" className="ml-2">{unauthorizedCount}</Badge>
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="relative flex-1 max-w-sm">
