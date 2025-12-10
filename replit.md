@@ -84,6 +84,7 @@ A comprehensive OLT (Optical Line Terminal) Management System for multi-vendor G
 - `GET /api/olts/:id` - Get OLT details
 - `PATCH /api/olts/:id` - Update OLT
 - `DELETE /api/olts/:id` - Delete OLT
+- `POST /api/olts/:id/poll` - Poll OLT via SNMP (CPU, memory, temperature, ONU count)
 
 ### ONU Management
 - `GET /api/onus` - List all ONUs
@@ -91,6 +92,7 @@ A comprehensive OLT (Optical Line Terminal) Management System for multi-vendor G
 - `GET /api/onus/:id` - Get ONU details
 - `PATCH /api/onus/:id` - Update ONU
 - `DELETE /api/onus/:id` - Delete ONU
+- `POST /api/onus/:id/poll` - Poll ONU optical power via SNMP (Rx/Tx power, distance)
 - `GET /api/onus/:id/tr069` - Get linked TR-069 device
 - `POST /api/onus/:id/tr069/link` - Link ONU to TR-069 device
 - `GET /api/onus/:id/tr069/tasks` - Get TR-069 tasks for ONU

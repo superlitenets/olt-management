@@ -209,6 +209,165 @@ export async function registerRoutes(
     }
   });
 
+  // SNMP polling endpoint
+  app.post("/api/olts/:id/poll", isAuthenticated, async (req, res) => {
+    try {
+      const olt = await storage.getOlt(req.params.id);
+      if (!olt) {
+        return res.status(404).json({ message: "OLT not found" });
+      }
+
+      const { createSnmpClient } = await import("./drivers/snmp-client");
+      // Normalize vendor to lowercase for SNMP client
+      const normalizedVendor = olt.vendor.toLowerCase() as "huawei" | "zte";
+      if (normalizedVendor !== "huawei" && normalizedVendor !== "zte") {
+        return res.status(400).json({ 
+          message: `Unsupported vendor: ${olt.vendor}. SNMP polling supports Huawei and ZTE only.` 
+        });
+      }
+      const snmpClient = createSnmpClient(
+        olt.ipAddress,
+        olt.snmpCommunity || "public",
+        normalizedVendor,
+        olt.snmpPort || 161
+      );
+
+      try {
+        // Test connection first
+        const isReachable = await snmpClient.testConnection();
+        if (!isReachable) {
+          return res.status(503).json({ 
+            message: "OLT not reachable via SNMP",
+            suggestion: "Check SNMP community string and network connectivity"
+          });
+        }
+
+        // Get system info and ONU count in parallel
+        const [systemInfo, onuCount] = await Promise.all([
+          snmpClient.getSystemInfo(),
+          snmpClient.getOnuCount(),
+        ]);
+
+        // Update OLT with polled data
+        const updateData: any = {
+          status: "online",
+          lastPolled: new Date(),
+          activeOnus: onuCount,
+        };
+
+        if (systemInfo.cpuUsage !== undefined) updateData.cpuUsage = systemInfo.cpuUsage;
+        if (systemInfo.memoryUsage !== undefined) updateData.memoryUsage = systemInfo.memoryUsage;
+        if (systemInfo.temperature !== undefined) updateData.temperature = systemInfo.temperature;
+        if (systemInfo.sysUptime !== undefined) updateData.uptime = systemInfo.sysUptime;
+        if (systemInfo.firmwareVersion) updateData.firmwareVersion = systemInfo.firmwareVersion;
+
+        const updatedOlt = await storage.updateOlt(olt.id, updateData);
+        broadcast("olt:updated", updatedOlt);
+
+        res.json({
+          message: "SNMP poll successful",
+          data: {
+            ...systemInfo,
+            activeOnus: onuCount,
+          },
+          olt: updatedOlt,
+        });
+      } finally {
+        snmpClient.close();
+      }
+    } catch (error) {
+      console.error("SNMP poll error:", error);
+      
+      // Update OLT status to offline on error
+      try {
+        const olt = await storage.getOlt(req.params.id);
+        if (olt) {
+          const updatedOlt = await storage.updateOlt(req.params.id, { 
+            status: "offline",
+            lastPolled: new Date(),
+          });
+          broadcast("olt:updated", updatedOlt);
+        }
+      } catch (updateError) {
+        console.error("Failed to update OLT status:", updateError);
+      }
+      
+      res.status(500).json({ 
+        message: "SNMP poll failed",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  // SNMP poll ONU optical power
+  app.post("/api/onus/:id/poll", isAuthenticated, async (req, res) => {
+    try {
+      const onu = await storage.getOnu(req.params.id);
+      if (!onu) {
+        return res.status(404).json({ message: "ONU not found" });
+      }
+
+      const olt = await storage.getOlt(onu.oltId);
+      if (!olt) {
+        return res.status(404).json({ message: "Parent OLT not found" });
+      }
+
+      if (!onu.ponPort || !onu.onuId) {
+        return res.status(400).json({ 
+          message: "ONU must have PON port and ONU ID configured for SNMP polling" 
+        });
+      }
+
+      const { createSnmpClient } = await import("./drivers/snmp-client");
+      // Normalize vendor to lowercase for SNMP client
+      const normalizedVendor = olt.vendor.toLowerCase() as "huawei" | "zte";
+      if (normalizedVendor !== "huawei" && normalizedVendor !== "zte") {
+        return res.status(400).json({ 
+          message: `Unsupported vendor: ${olt.vendor}. SNMP polling supports Huawei and ZTE only.` 
+        });
+      }
+      const snmpClient = createSnmpClient(
+        olt.ipAddress,
+        olt.snmpCommunity || "public",
+        normalizedVendor,
+        olt.snmpPort || 161
+      );
+
+      try {
+        const opticalData = await snmpClient.getOnuOpticalPower(onu.ponPort, onu.onuId);
+
+        // Update ONU with polled data
+        const updateData: any = {};
+        if (opticalData.rxPower !== undefined) updateData.rxPower = opticalData.rxPower;
+        if (opticalData.txPower !== undefined) updateData.txPower = opticalData.txPower;
+        if (opticalData.distance !== undefined) updateData.distance = opticalData.distance;
+
+        if (Object.keys(updateData).length > 0) {
+          const updatedOnu = await storage.updateOnu(onu.id, updateData);
+          broadcast("onu:updated", updatedOnu);
+          res.json({
+            message: "ONU SNMP poll successful",
+            data: opticalData,
+            onu: updatedOnu,
+          });
+        } else {
+          res.json({
+            message: "ONU SNMP poll completed but no data available",
+            data: opticalData,
+          });
+        }
+      } finally {
+        snmpClient.close();
+      }
+    } catch (error) {
+      console.error("ONU SNMP poll error:", error);
+      res.status(500).json({ 
+        message: "ONU SNMP poll failed",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
   // ONU routes
   app.get("/api/onus", isAuthenticated, async (req, res) => {
     try {
