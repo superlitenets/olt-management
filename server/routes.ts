@@ -396,6 +396,108 @@ export async function registerRoutes(
     }
   });
 
+  // Discover ONUs on an OLT via SNMP
+  app.post("/api/olts/:id/discover-onus", isAuthenticated, async (req: any, res) => {
+    try {
+      const olt = await storage.getOlt(req.params.id);
+      if (!olt) {
+        return res.status(404).json({ message: "OLT not found" });
+      }
+
+      console.log(`[discover-onus] Starting discovery on OLT: ${olt.name} (${olt.ipAddress})`);
+
+      const { createSnmpClient } = await import("./drivers/snmp-client");
+      const normalizedVendor = olt.vendor.toLowerCase() as "huawei" | "zte";
+      if (normalizedVendor !== "huawei" && normalizedVendor !== "zte") {
+        return res.status(400).json({ 
+          message: `Unsupported vendor: ${olt.vendor}. ONU discovery supports Huawei and ZTE only.` 
+        });
+      }
+
+      const snmpClient = createSnmpClient(
+        olt.ipAddress,
+        olt.snmpCommunity || "public",
+        normalizedVendor,
+        olt.snmpPort || 161
+      );
+
+      try {
+        const discoveredOnus = await snmpClient.discoverOnus();
+        
+        // Get existing ONUs for this OLT
+        const existingOnus = await storage.getOnus(olt.id);
+        const existingSerials = new Set(existingOnus.map(o => o.serialNumber.toUpperCase()));
+        
+        // Resolve tenant ID
+        const tenantId = await resolveTenantId(req);
+        
+        // Create new ONUs that don't exist
+        const created: any[] = [];
+        const updated: any[] = [];
+        const skipped: any[] = [];
+        
+        for (const discovered of discoveredOnus) {
+          const serialUpper = discovered.serialNumber.toUpperCase();
+          
+          if (existingSerials.has(serialUpper)) {
+            // Update existing ONU status
+            const existing = existingOnus.find(o => o.serialNumber.toUpperCase() === serialUpper);
+            if (existing) {
+              const updatedOnu = await storage.updateOnu(existing.id, {
+                status: discovered.status as "online" | "offline",
+                ponPort: discovered.ponPort,
+                onuId: discovered.onuId,
+              });
+              updated.push(updatedOnu);
+            }
+          } else {
+            // Create new ONU
+            try {
+              const newOnu = await storage.createOnu({
+                tenantId,
+                oltId: olt.id,
+                name: `ONU-${discovered.serialNumber.slice(-8)}`,
+                serialNumber: discovered.serialNumber,
+                ponPort: discovered.ponPort,
+                onuId: discovered.onuId,
+                status: discovered.status as "online" | "offline",
+                model: "Auto-discovered",
+              });
+              created.push(newOnu);
+              broadcast("onu:created", newOnu);
+            } catch (createError) {
+              console.error(`Failed to create ONU ${discovered.serialNumber}:`, createError);
+              skipped.push({ serial: discovered.serialNumber, error: String(createError) });
+            }
+          }
+        }
+
+        console.log(`[discover-onus] Complete: ${created.length} created, ${updated.length} updated, ${skipped.length} skipped`);
+
+        res.json({
+          message: "ONU discovery complete",
+          summary: {
+            discovered: discoveredOnus.length,
+            created: created.length,
+            updated: updated.length,
+            skipped: skipped.length,
+          },
+          created,
+          updated,
+          skipped,
+        });
+      } finally {
+        snmpClient.close();
+      }
+    } catch (error) {
+      console.error("[discover-onus] Error:", error);
+      res.status(500).json({ 
+        message: "ONU discovery failed",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
   // SNMP poll ONU optical power
   app.post("/api/onus/:id/poll", isAuthenticated, async (req, res) => {
     try {

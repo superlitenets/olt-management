@@ -105,6 +105,38 @@ export default function OltDetailPage() {
     },
   });
 
+  const discoverOnusMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", `/api/olts/${oltId}/discover-onus`);
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onus"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/olts", oltId] });
+      toast({
+        title: "Discovery Complete",
+        description: `Found ${data.summary?.discovered || 0} ONUs: ${data.summary?.created || 0} new, ${data.summary?.updated || 0} updated`,
+      });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Discovery Failed",
+        description: error.message || "Could not discover ONUs",
+        variant: "destructive",
+      });
+    },
+  });
+
   if (oltLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -179,6 +211,19 @@ export default function OltDetailPage() {
               <RefreshCw className="h-4 w-4 mr-2" />
             )}
             Poll Now
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => discoverOnusMutation.mutate()}
+            disabled={discoverOnusMutation.isPending}
+            data-testid="button-discover-onus"
+          >
+            {discoverOnusMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Network className="h-4 w-4 mr-2" />
+            )}
+            Discover ONUs
           </Button>
           <Button variant="outline" data-testid="button-configure-olt">
             <Settings className="h-4 w-4 mr-2" />

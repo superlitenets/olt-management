@@ -30,6 +30,14 @@ export interface OnuSnmpData {
   uptime?: number;
 }
 
+export interface DiscoveredOnu {
+  serialNumber: string;
+  ponPort: number;
+  onuId: number;
+  status: string;
+  index: string;
+}
+
 // Standard MIB-2 OIDs
 const STANDARD_OIDS = {
   sysDescr: "1.3.6.1.2.1.1.1.0",
@@ -380,6 +388,96 @@ export class OltSnmpClient {
     } catch (error) {
       console.error("SNMP getOnuCount error:", error);
       return 0;
+    }
+  }
+
+  // Discover all ONUs on this OLT
+  async discoverOnus(): Promise<DiscoveredOnu[]> {
+    console.log(`[SNMP] Starting ONU discovery for ${this.vendor} OLT...`);
+    const discoveredOnus: DiscoveredOnu[] = [];
+
+    try {
+      // Walk the ONU serial number table
+      console.log(`[SNMP] Walking ONU serial number table: ${this.oids.onuSerialNumber}`);
+      const serialResults = await this.snmpClient.walk(this.oids.onuSerialNumber).catch((err) => {
+        console.log(`[SNMP] ONU serial walk failed: ${err.message}`);
+        return new Map();
+      });
+
+      console.log(`[SNMP] Found ${serialResults.size} ONUs`);
+
+      // Walk the ONU status table
+      const statusResults = await this.snmpClient.walk(this.oids.onuStatus).catch((err) => {
+        console.log(`[SNMP] ONU status walk failed: ${err.message}`);
+        return new Map();
+      });
+
+      // Parse discovered ONUs
+      serialResults.forEach((serialValue, oid) => {
+        try {
+          // Extract index from OID (e.g., 1.3.6.1.4.1.2011.6.128.1.1.2.43.1.3.X.Y.Z.W)
+          const oidParts = oid.split(".");
+          const baseOidLength = this.oids.onuSerialNumber.split(".").length;
+          const indexParts = oidParts.slice(baseOidLength);
+          
+          // For Huawei: index is typically frame.slot.port.onuId
+          let ponPort = 0;
+          let onuId = 0;
+          
+          if (this.vendor === "huawei" && indexParts.length >= 4) {
+            // Huawei index: frameId.slotId.portId.onuId
+            const frameId = parseInt(indexParts[0]);
+            const slotId = parseInt(indexParts[1]);
+            const portId = parseInt(indexParts[2]);
+            onuId = parseInt(indexParts[3]);
+            // Convert to simplified PON port (slot * 16 + port)
+            ponPort = slotId * 16 + portId;
+          } else if (indexParts.length >= 2) {
+            // ZTE or simplified: portId.onuId
+            ponPort = parseInt(indexParts[0]);
+            onuId = parseInt(indexParts[1]);
+          }
+
+          // Parse serial number (may be hex or ASCII)
+          let serialNumber = "";
+          if (typeof serialValue === "string") {
+            serialNumber = serialValue;
+          } else if (Buffer.isBuffer(serialValue)) {
+            // Convert buffer to hex string
+            serialNumber = serialValue.toString("hex").toUpperCase();
+          } else {
+            serialNumber = String(serialValue);
+          }
+
+          // Get status from status results
+          let status = "unknown";
+          const statusOid = oid.replace(this.oids.onuSerialNumber, this.oids.onuStatus);
+          if (statusResults.has(statusOid)) {
+            const statusVal = Number(statusResults.get(statusOid));
+            // Huawei status: 1=online, 2=offline, 3=low_signal
+            // ZTE status: 1=online, 2=offline
+            status = statusVal === 1 ? "online" : statusVal === 2 ? "offline" : "unknown";
+          }
+
+          console.log(`[SNMP] Discovered ONU: SN=${serialNumber}, PON=${ponPort}, ID=${onuId}, Status=${status}`);
+
+          discoveredOnus.push({
+            serialNumber,
+            ponPort,
+            onuId,
+            status,
+            index: indexParts.join("."),
+          });
+        } catch (parseError) {
+          console.error(`[SNMP] Error parsing ONU OID ${oid}:`, parseError);
+        }
+      });
+
+      console.log(`[SNMP] Discovery complete: ${discoveredOnus.length} ONUs found`);
+      return discoveredOnus;
+    } catch (error) {
+      console.error("[SNMP] ONU discovery error:", error);
+      return [];
     }
   }
 
