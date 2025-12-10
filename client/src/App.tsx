@@ -17,6 +17,7 @@ import ServiceProfilesPage from "@/pages/service-profiles";
 import AlertsPage from "@/pages/alerts";
 import MonitoringPage from "@/pages/monitoring";
 import Tr069Page from "@/pages/tr069";
+import VpnPage from "@/pages/vpn";
 import UsersPage from "@/pages/users";
 import TenantsPage from "@/pages/tenants";
 import SettingsPage from "@/pages/settings";
@@ -81,6 +82,7 @@ function Router() {
         <Route path="/alerts" component={AlertsPage} />
         <Route path="/monitoring" component={MonitoringPage} />
         <Route path="/tr069" component={Tr069Page} />
+        <Route path="/vpn" component={VpnPage} />
         <Route path="/users" component={UsersPage} />
         <Route path="/tenants" component={TenantsPage} />
         <Route path="/settings" component={SettingsPage} />

@@ -12,6 +12,7 @@ import {
   LogOut,
   ChevronDown,
   Wifi,
+  Shield,
 } from "lucide-react";
 import {
   Sidebar,
@@ -64,6 +65,11 @@ const mainNavItems = [
     title: "TR-069/ACS",
     url: "/tr069",
     icon: Wifi,
+  },
+  {
+    title: "VPN",
+    url: "/vpn",
+    icon: Shield,
   },
   {
     title: "Monitoring",
