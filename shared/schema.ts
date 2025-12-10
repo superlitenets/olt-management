@@ -324,6 +324,166 @@ export const insertEventLogSchema = createInsertSchema(eventLogs).omit({
   createdAt: true,
 });
 
+// TR-069 Enums
+export const tr069TaskStatusEnum = pgEnum("tr069_task_status", ["pending", "in_progress", "completed", "failed", "expired"]);
+export const tr069TaskTypeEnum = pgEnum("tr069_task_type", ["get_parameter_values", "set_parameter_values", "download", "upload", "reboot", "factory_reset", "add_object", "delete_object"]);
+
+// TR-069 Devices - CPE/ONU devices that connect to ACS
+export const tr069Devices = pgTable("tr069_devices", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  onuId: varchar("onu_id").references(() => onus.id),
+  deviceId: varchar("device_id", { length: 255 }).notNull().unique(),
+  oui: varchar("oui", { length: 6 }),
+  productClass: varchar("product_class", { length: 100 }),
+  serialNumber: varchar("serial_number", { length: 100 }),
+  manufacturer: varchar("manufacturer", { length: 255 }),
+  modelName: varchar("model_name", { length: 255 }),
+  softwareVersion: varchar("software_version", { length: 100 }),
+  hardwareVersion: varchar("hardware_version", { length: 100 }),
+  connectionRequestUrl: varchar("connection_request_url", { length: 500 }),
+  connectionRequestUsername: varchar("connection_request_username", { length: 100 }),
+  connectionRequestPassword: varchar("connection_request_password", { length: 255 }),
+  externalIp: varchar("external_ip", { length: 45 }),
+  lastInformTime: timestamp("last_inform_time"),
+  lastConnectionTime: timestamp("last_connection_time"),
+  isOnline: boolean("is_online").default(false),
+  parameterCache: jsonb("parameter_cache"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// TR-069 Tasks - Commands sent to devices
+export const tr069Tasks = pgTable("tr069_tasks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  deviceId: varchar("device_id").references(() => tr069Devices.id).notNull(),
+  taskType: tr069TaskTypeEnum("task_type").notNull(),
+  status: tr069TaskStatusEnum("status").default("pending"),
+  parameters: jsonb("parameters"),
+  result: jsonb("result"),
+  errorMessage: text("error_message"),
+  retryCount: integer("retry_count").default(0),
+  maxRetries: integer("max_retries").default(3),
+  expiresAt: timestamp("expires_at"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// TR-069 Presets - Auto-configuration templates
+export const tr069Presets = pgTable("tr069_presets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  weight: integer("weight").default(0),
+  channel: varchar("channel", { length: 100 }),
+  events: jsonb("events"),
+  precondition: jsonb("precondition"),
+  configurations: jsonb("configurations"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// TR-069 Parameters - Cached device parameters
+export const tr069Parameters = pgTable("tr069_parameters", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  deviceId: varchar("device_id").references(() => tr069Devices.id).notNull(),
+  path: varchar("path", { length: 500 }).notNull(),
+  value: text("value"),
+  valueType: varchar("value_type", { length: 50 }),
+  writable: boolean("writable").default(true),
+  notification: integer("notification").default(0),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// TR-069 Firmware Images
+export const tr069Firmware = pgTable("tr069_firmware", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  version: varchar("version", { length: 100 }).notNull(),
+  manufacturer: varchar("manufacturer", { length: 255 }),
+  productClass: varchar("product_class", { length: 100 }),
+  fileUrl: varchar("file_url", { length: 500 }),
+  fileSize: integer("file_size"),
+  checksum: varchar("checksum", { length: 64 }),
+  checksumType: varchar("checksum_type", { length: 20 }),
+  description: text("description"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// TR-069 Relations
+export const tr069DevicesRelations = relations(tr069Devices, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [tr069Devices.tenantId],
+    references: [tenants.id],
+  }),
+  onu: one(onus, {
+    fields: [tr069Devices.onuId],
+    references: [onus.id],
+  }),
+  tasks: many(tr069Tasks),
+  parameters: many(tr069Parameters),
+}));
+
+export const tr069TasksRelations = relations(tr069Tasks, ({ one }) => ({
+  device: one(tr069Devices, {
+    fields: [tr069Tasks.deviceId],
+    references: [tr069Devices.id],
+  }),
+}));
+
+export const tr069PresetsRelations = relations(tr069Presets, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [tr069Presets.tenantId],
+    references: [tenants.id],
+  }),
+}));
+
+export const tr069ParametersRelations = relations(tr069Parameters, ({ one }) => ({
+  device: one(tr069Devices, {
+    fields: [tr069Parameters.deviceId],
+    references: [tr069Devices.id],
+  }),
+}));
+
+export const tr069FirmwareRelations = relations(tr069Firmware, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [tr069Firmware.tenantId],
+    references: [tenants.id],
+  }),
+}));
+
+// TR-069 Insert Schemas
+export const insertTr069DeviceSchema = createInsertSchema(tr069Devices).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastInformTime: true,
+  lastConnectionTime: true,
+});
+
+export const insertTr069TaskSchema = createInsertSchema(tr069Tasks).omit({
+  id: true,
+  createdAt: true,
+  startedAt: true,
+  completedAt: true,
+});
+
+export const insertTr069PresetSchema = createInsertSchema(tr069Presets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertTr069FirmwareSchema = createInsertSchema(tr069Firmware).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Types
 export type Tenant = typeof tenants.$inferSelect;
 export type InsertTenant = z.infer<typeof insertTenantSchema>;
@@ -345,3 +505,17 @@ export type InsertAlert = z.infer<typeof insertAlertSchema>;
 
 export type EventLog = typeof eventLogs.$inferSelect;
 export type InsertEventLog = z.infer<typeof insertEventLogSchema>;
+
+export type Tr069Device = typeof tr069Devices.$inferSelect;
+export type InsertTr069Device = z.infer<typeof insertTr069DeviceSchema>;
+
+export type Tr069Task = typeof tr069Tasks.$inferSelect;
+export type InsertTr069Task = z.infer<typeof insertTr069TaskSchema>;
+
+export type Tr069Preset = typeof tr069Presets.$inferSelect;
+export type InsertTr069Preset = z.infer<typeof insertTr069PresetSchema>;
+
+export type Tr069Parameter = typeof tr069Parameters.$inferSelect;
+
+export type Tr069Firmware = typeof tr069Firmware.$inferSelect;
+export type InsertTr069Firmware = z.infer<typeof insertTr069FirmwareSchema>;
