@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
+import { setupLocalAuth } from "./localAuth";
 import {
   insertOltSchema,
   insertOnuSchema,
@@ -48,8 +49,9 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // Setup authentication
+  // Setup authentication (both Replit Auth and Local Auth)
   await setupAuth(app);
+  setupLocalAuth(app);
 
   // WebSocket server for real-time updates
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });

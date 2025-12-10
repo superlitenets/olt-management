@@ -44,9 +44,12 @@ import { db } from "./db";
 import { eq, and, desc } from "drizzle-orm";
 
 export interface IStorage {
-  // User operations (required for Replit Auth)
+  // User operations (required for Replit Auth and Local Auth)
   getUser(id: string): Promise<User | undefined>;
+  getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
+  createLocalUser(user: { username: string; email: string; password: string; firstName: string | null; lastName: string | null }): Promise<User>;
   getUsers(tenantId?: string): Promise<User[]>;
   
   // Tenant operations
@@ -160,6 +163,32 @@ export class DatabaseStorage implements IStorage {
       return db.select().from(users).where(eq(users.tenantId, tenantId));
     }
     return db.select().from(users);
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+
+  async createLocalUser(userData: { username: string; email: string; password: string; firstName: string | null; lastName: string | null }): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values({
+        username: userData.username,
+        email: userData.email,
+        password: userData.password,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        role: "operator",
+        isActive: true,
+      })
+      .returning();
+    return user;
   }
 
   // Tenant operations

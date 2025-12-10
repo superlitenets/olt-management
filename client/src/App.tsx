@@ -10,6 +10,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { useAuth } from "@/hooks/useAuth";
 
 import Landing from "@/pages/landing";
+import AuthPage from "@/pages/auth-page";
 import Dashboard from "@/pages/dashboard";
 import OltsPage from "@/pages/olts";
 import OnusPage from "@/pages/onus";
@@ -67,6 +68,7 @@ function Router() {
     return (
       <Switch>
         <Route path="/" component={Landing} />
+        <Route path="/auth" component={AuthPage} />
         <Route component={Landing} />
       </Switch>
     );

@@ -154,6 +154,21 @@ npm run db:studio  # Open Drizzle Studio
 - `REPLIT_DEPLOYMENT_ID` - Deployment context
 - `ISSUER_URL` - OpenID Connect issuer
 
+## Authentication
+The system supports two authentication methods:
+
+### Replit Auth (Default in Replit)
+- Uses OpenID Connect with Replit as identity provider
+- Automatic user creation on first login
+
+### Local Auth (For Docker/Self-hosted)
+- Username/password authentication with bcrypt hashing
+- Registration at `/auth` page
+- API endpoints:
+  - `POST /api/auth/register` - Create new account
+  - `POST /api/auth/login` - Authenticate with username/password
+  - `POST /api/auth/logout` - End session
+
 ## Design Choices
 
 ### Hybrid Management Approach

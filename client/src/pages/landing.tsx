@@ -47,7 +47,7 @@ export default function Landing() {
             <span className="text-lg font-semibold">OLT Manager</span>
           </div>
           <Button asChild data-testid="button-login">
-            <a href="/api/login">
+            <a href="/auth">
               Sign In
               <ChevronRight className="ml-1 h-4 w-4" />
             </a>
@@ -67,7 +67,7 @@ export default function Landing() {
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               <Button size="lg" asChild data-testid="button-get-started">
-                <a href="/api/login">
+                <a href="/auth">
                   Get Started
                   <ChevronRight className="ml-1 h-4 w-4" />
                 </a>
