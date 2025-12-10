@@ -308,10 +308,10 @@ export default function Tr069Page() {
             </CardHeader>
             <CardContent>
               {devicesLoading ? (
-                <TableSkeleton rows={5} columns={7} />
+                <TableSkeleton rows={5} />
               ) : !filteredDevices?.length ? (
                 <EmptyState
-                  icon={Cpu}
+                  icon={<Cpu className="h-8 w-8" />}
                   title="No TR-069 devices"
                   description="Devices will appear here when they connect to the ACS server on port 7547"
                 />
@@ -429,10 +429,10 @@ export default function Tr069Page() {
             </CardHeader>
             <CardContent>
               {tasksLoading ? (
-                <TableSkeleton rows={5} columns={6} />
+                <TableSkeleton rows={5} />
               ) : !tasks?.length ? (
                 <EmptyState
-                  icon={Play}
+                  icon={<Play className="h-8 w-8" />}
                   title="No pending tasks"
                   description="Tasks will appear here when you send commands to devices"
                 />
@@ -478,10 +478,10 @@ export default function Tr069Page() {
             </CardHeader>
             <CardContent>
               {presetsLoading ? (
-                <TableSkeleton rows={3} columns={5} />
+                <TableSkeleton rows={3} />
               ) : !presets?.length ? (
                 <EmptyState
-                  icon={Settings}
+                  icon={<Settings className="h-8 w-8" />}
                   title="No presets configured"
                   description="Create presets to auto-configure devices when they connect"
                 />
@@ -533,10 +533,10 @@ export default function Tr069Page() {
             </CardHeader>
             <CardContent>
               {firmwareLoading ? (
-                <TableSkeleton rows={3} columns={6} />
+                <TableSkeleton rows={3} />
               ) : !firmware?.length ? (
                 <EmptyState
-                  icon={Download}
+                  icon={<Download className="h-8 w-8" />}
                   title="No firmware uploaded"
                   description="Upload firmware images to deploy to devices"
                 />
