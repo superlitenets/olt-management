@@ -35,6 +35,11 @@ export function getSession() {
     ttl: sessionTtl,
     tableName: "sessions",
   });
+  
+  // In Docker/self-hosted without HTTPS, allow insecure cookies
+  // Set SECURE_COOKIES=false in docker-compose.yml if not using HTTPS
+  const secureCookies = process.env.SECURE_COOKIES !== "false" && isReplitEnvironment();
+  
   return session({
     secret: process.env.SESSION_SECRET!,
     store: sessionStore,
@@ -42,7 +47,8 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: secureCookies,
+      sameSite: secureCookies ? "strict" : "lax",
       maxAge: sessionTtl,
     },
   });

@@ -10,6 +10,7 @@ services:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/oltmanagement
       - SESSION_SECRET=${SESSION_SECRET:-your-session-secret-change-in-production}
+      - SECURE_COOKIES=false
     depends_on:
       db:
         condition: service_healthy
