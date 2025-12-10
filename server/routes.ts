@@ -217,6 +217,8 @@ export async function registerRoutes(
         return res.status(404).json({ message: "OLT not found" });
       }
 
+      console.log(`[test-connection] Testing OLT: ${olt.name} (${olt.ipAddress}), vendor: ${olt.vendor}`);
+
       const results: { snmp: boolean; telnet: boolean; errors: string[] } = {
         snmp: false,
         telnet: false,
@@ -227,6 +229,8 @@ export async function registerRoutes(
       try {
         const { createSnmpClient } = await import("./drivers/snmp-client");
         const normalizedVendor = olt.vendor.toLowerCase() as "huawei" | "zte";
+        console.log(`[test-connection] SNMP test - IP: ${olt.ipAddress}, community: ${olt.snmpCommunity || "public"}, port: ${olt.snmpPort || 161}`);
+        
         if (normalizedVendor === "huawei" || normalizedVendor === "zte") {
           const snmpClient = createSnmpClient(
             olt.ipAddress,
@@ -236,11 +240,16 @@ export async function registerRoutes(
           );
           try {
             results.snmp = await snmpClient.testConnection();
+            console.log(`[test-connection] SNMP result: ${results.snmp}`);
           } finally {
             snmpClient.close();
           }
+        } else {
+          console.log(`[test-connection] Unsupported vendor for SNMP: ${normalizedVendor}`);
+          results.errors.push(`SNMP: Unsupported vendor "${olt.vendor}" - only huawei and zte are supported`);
         }
       } catch (error) {
+        console.error(`[test-connection] SNMP error:`, error);
         results.errors.push(`SNMP: ${error instanceof Error ? error.message : "Connection failed"}`);
       }
 
@@ -252,20 +261,27 @@ export async function registerRoutes(
           
           // Check if simulation mode is disabled for real connection test
           const simulationMode = process.env.OLT_SIMULATION_MODE !== "false";
+          console.log(`[test-connection] Telnet test - simulation mode: ${simulationMode}, port: ${olt.sshPort || 23}`);
+          
           if (simulationMode) {
             results.telnet = true; // In simulation mode, assume success
+            console.log(`[test-connection] Telnet: Simulation mode enabled, returning success`);
           } else {
             // Try a simple command to test connection
+            console.log(`[test-connection] Telnet: Attempting real connection to ${olt.ipAddress}:${olt.sshPort || 23}`);
             const testResult = await driver.executeCommands(["display version"]);
             results.telnet = testResult.success;
+            console.log(`[test-connection] Telnet result: ${testResult.success}, output: ${testResult.output?.substring(0, 200)}`);
             if (!testResult.success && testResult.error) {
               results.errors.push(`Telnet: ${testResult.error}`);
             }
           }
         } catch (error) {
+          console.error(`[test-connection] Telnet error:`, error);
           results.errors.push(`Telnet: ${error instanceof Error ? error.message : "Connection failed"}`);
         }
       } else {
+        console.log(`[test-connection] Telnet: No credentials configured`);
         results.errors.push("Telnet: No credentials configured");
       }
 
