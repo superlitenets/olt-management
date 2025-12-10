@@ -413,30 +413,69 @@ export class OltSnmpClient {
       });
 
       // Parse discovered ONUs
+      let parseCount = 0;
       serialResults.forEach((serialValue, oid) => {
         try {
-          // Extract index from OID (e.g., 1.3.6.1.4.1.2011.6.128.1.1.2.43.1.3.X.Y.Z.W)
+          // Extract index from OID (e.g., 1.3.6.1.4.1.2011.6.128.1.1.2.43.1.3.X.Y)
           const oidParts = oid.split(".");
           const baseOidLength = this.oids.onuSerialNumber.split(".").length;
           const indexParts = oidParts.slice(baseOidLength);
           
-          // For Huawei: index is typically frame.slot.port.onuId
+          // Log first few for debugging
+          if (parseCount < 3) {
+            console.log(`[SNMP] ONU OID index parts: ${indexParts.join(".")}`);
+          }
+          parseCount++;
+          
           let ponPort = 0;
           let onuId = 0;
           
-          if (this.vendor === "huawei" && indexParts.length >= 4) {
-            // Huawei index: frameId.slotId.portId.onuId
-            const frameId = parseInt(indexParts[0]);
-            const slotId = parseInt(indexParts[1]);
-            const portId = parseInt(indexParts[2]);
-            onuId = parseInt(indexParts[3]);
-            // Convert to simplified PON port (slot * 16 + port)
-            ponPort = slotId * 16 + portId;
-          } else if (indexParts.length >= 2) {
-            // ZTE or simplified: portId.onuId
-            ponPort = parseInt(indexParts[0]);
-            onuId = parseInt(indexParts[1]);
+          if (this.vendor === "huawei") {
+            // Huawei MA5600 series uses: <ifIndex>.<onuIndex>
+            // ifIndex is encoded as: 4194304000 + (slot * 65536) + (port * 256)
+            // Or sometimes: <frame>.<slot>.<port>.<onuId>
+            
+            if (indexParts.length === 2) {
+              // Format: <ifIndex>.<onuId>
+              const ifIndex = parseInt(indexParts[0]) || 0;
+              onuId = parseInt(indexParts[1]) || 0;
+              
+              // Decode ifIndex: 4194304000 is base for GPON interfaces
+              // ifIndex = 4194304000 + (slot << 13) + (port << 8) for some models
+              // Or ifIndex = 4194304000 + (slot * 8 + port) * 256 for others
+              const baseIndex = 4194304000;
+              if (ifIndex >= baseIndex) {
+                const offset = ifIndex - baseIndex;
+                // Try to extract slot and port from offset
+                const slot = Math.floor(offset / 65536) & 0xFF;
+                const port = Math.floor((offset % 65536) / 256) & 0xFF;
+                ponPort = slot * 8 + port; // Combine slot and port
+              } else {
+                ponPort = Math.floor(ifIndex / 256) & 0xFF;
+              }
+            } else if (indexParts.length >= 4) {
+              // Format: <frame>.<slot>.<port>.<onuId>
+              const slot = parseInt(indexParts[1]) || 0;
+              const port = parseInt(indexParts[2]) || 0;
+              onuId = parseInt(indexParts[3]) || 0;
+              ponPort = slot * 8 + port;
+            } else if (indexParts.length >= 1) {
+              // Single index or unknown format
+              const idx = parseInt(indexParts[0]) || 0;
+              ponPort = 1;
+              onuId = idx & 0xFF;
+            }
+          } else {
+            // ZTE: typically <slotPort>.<onuId>
+            if (indexParts.length >= 2) {
+              ponPort = parseInt(indexParts[0]) || 0;
+              onuId = parseInt(indexParts[1]) || 0;
+            }
           }
+          
+          // Ensure values fit in database integer columns (reasonable ranges)
+          ponPort = Math.max(0, Math.min(ponPort, 255));
+          onuId = Math.max(1, Math.min(onuId, 255));
 
           // Parse serial number (may be hex or ASCII)
           let serialNumber = "";
