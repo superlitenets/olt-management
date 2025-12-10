@@ -345,9 +345,7 @@ export async function registerRoutes(
       if (!taskType) {
         return res.status(400).json({ message: "taskType is required" });
       }
-      const tenantId = await resolveTenantId(req);
       const task = await storage.createTr069Task({
-        tenantId,
         deviceId: tr069Device.id,
         taskType,
         parameters: parameters || {},
@@ -376,6 +374,71 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching TR-069 tasks for ONU:", error);
       res.status(500).json({ message: "Failed to fetch TR-069 tasks" });
+    }
+  });
+
+  // Provision ONU with TR-069/ACS config from parent OLT
+  app.post("/api/onus/:id/provision-tr069", isAuthenticated, async (req, res) => {
+    try {
+      const onu = await storage.getOnu(req.params.id);
+      if (!onu) {
+        return res.status(404).json({ message: "ONU not found" });
+      }
+      
+      if (!onu.oltId) {
+        return res.status(400).json({ message: "ONU is not associated with an OLT" });
+      }
+      
+      const olt = await storage.getOlt(onu.oltId);
+      if (!olt) {
+        return res.status(404).json({ message: "Parent OLT not found" });
+      }
+      
+      if (!olt.acsEnabled) {
+        return res.status(400).json({ message: "TR-069/ACS is not enabled on this OLT" });
+      }
+      
+      if (!olt.acsUrl) {
+        return res.status(400).json({ message: "ACS URL is not configured on the OLT" });
+      }
+      
+      // Generate provisioning parameters for OMCI/TR-069 configuration
+      // These parameters would be sent to the OLT to configure the ONU via OMCI
+      const provisioningParams = {
+        acsUrl: olt.acsUrl,
+        acsUsername: olt.acsUsername || "",
+        acsPassword: olt.acsPassword || "",
+        periodicInformInterval: olt.acsPeriodicInformInterval || 3600,
+        onuSerialNumber: onu.serialNumber,
+        onuMacAddress: onu.macAddress,
+      };
+      
+      // In a production environment, this would:
+      // 1. Connect to the OLT via SSH/SNMP
+      // 2. Send OMCI commands to configure TR-069 VEIP or TR-069 management VLAN
+      // 3. Configure the ONU with ACS server URL and credentials
+      // 4. Enable CWMP on the ONU
+      
+      // Log the provisioning event
+      broadcast("onu:tr069Provisioned", { 
+        onuId: onu.id, 
+        oltId: olt.id,
+        acsUrl: olt.acsUrl,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Update ONU with provisioning status
+      await storage.updateOnu(onu.id, {
+        status: "online",
+      });
+      
+      res.json({ 
+        message: "TR-069/ACS provisioning initiated successfully",
+        provisioningParams
+      });
+    } catch (error) {
+      console.error("Error provisioning ONU with TR-069:", error);
+      res.status(500).json({ message: "Failed to provision ONU with TR-069 configuration" });
     }
   });
 

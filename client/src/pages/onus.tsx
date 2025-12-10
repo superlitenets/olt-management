@@ -61,6 +61,7 @@ import {
   Activity,
   RotateCcw,
   FileText,
+  Zap,
 } from "lucide-react";
 import type { Onu, Olt, ServiceProfile, Tr069Device } from "@shared/schema";
 
@@ -168,6 +169,37 @@ export default function OnusPage() {
       toast({
         title: "Error",
         description: "Failed to restart ONU",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const provisionTr069Mutation = useMutation({
+    mutationFn: async (onuId: string) => {
+      return apiRequest("POST", `/api/onus/${onuId}/provision-tr069`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onus"] });
+      toast({
+        title: "TR-069 Provisioning Started",
+        description: "The ONU is being configured with ACS settings from the OLT",
+      });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: error.message || "Failed to provision ONU with TR-069",
         variant: "destructive",
       });
     },
@@ -364,6 +396,14 @@ export default function OnusPage() {
                             >
                               <RefreshCw className="h-4 w-4 mr-2" />
                               Restart
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => provisionTr069Mutation.mutate(onu.id)}
+                              disabled={provisionTr069Mutation.isPending}
+                              data-testid={`button-provision-tr069-${onu.id}`}
+                            >
+                              <Zap className="h-4 w-4 mr-2" />
+                              Provision TR-069
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem>
