@@ -62,7 +62,7 @@ export interface IStorage {
   getOlt(id: string): Promise<Olt | undefined>;
   getOlts(tenantId?: string): Promise<Olt[]>;
   createOlt(olt: InsertOlt): Promise<Olt>;
-  updateOlt(id: string, olt: Partial<InsertOlt>): Promise<Olt | undefined>;
+  updateOlt(id: string, olt: Partial<Olt>): Promise<Olt | undefined>;
   deleteOlt(id: string): Promise<boolean>;
   
   // ONU operations
@@ -233,7 +233,7 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async updateOlt(id: string, olt: Partial<InsertOlt>): Promise<Olt | undefined> {
+  async updateOlt(id: string, olt: Partial<Olt>): Promise<Olt | undefined> {
     const [updated] = await db
       .update(olts)
       .set({ ...olt, updatedAt: new Date() })

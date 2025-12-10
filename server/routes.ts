@@ -209,6 +209,87 @@ export async function registerRoutes(
     }
   });
 
+  // Test OLT connection endpoint
+  app.post("/api/olts/:id/test-connection", isAuthenticated, async (req, res) => {
+    try {
+      const olt = await storage.getOlt(req.params.id);
+      if (!olt) {
+        return res.status(404).json({ message: "OLT not found" });
+      }
+
+      const results: { snmp: boolean; telnet: boolean; errors: string[] } = {
+        snmp: false,
+        telnet: false,
+        errors: [],
+      };
+
+      // Test SNMP connection
+      try {
+        const { createSnmpClient } = await import("./drivers/snmp-client");
+        const normalizedVendor = olt.vendor.toLowerCase() as "huawei" | "zte";
+        if (normalizedVendor === "huawei" || normalizedVendor === "zte") {
+          const snmpClient = createSnmpClient(
+            olt.ipAddress,
+            olt.snmpCommunity || "public",
+            normalizedVendor,
+            olt.snmpPort || 161
+          );
+          try {
+            results.snmp = await snmpClient.testConnection();
+          } finally {
+            snmpClient.close();
+          }
+        }
+      } catch (error) {
+        results.errors.push(`SNMP: ${error instanceof Error ? error.message : "Connection failed"}`);
+      }
+
+      // Test Telnet connection (if credentials provided)
+      if (olt.sshUsername && olt.sshPassword) {
+        try {
+          const { createOltDriver } = await import("./drivers/olt-driver");
+          const driver = createOltDriver(olt);
+          
+          // Check if simulation mode is disabled for real connection test
+          const simulationMode = process.env.OLT_SIMULATION_MODE !== "false";
+          if (simulationMode) {
+            results.telnet = true; // In simulation mode, assume success
+          } else {
+            // Try a simple command to test connection
+            const testResult = await driver.executeCommands(["display version"]);
+            results.telnet = testResult.success;
+            if (!testResult.success && testResult.error) {
+              results.errors.push(`Telnet: ${testResult.error}`);
+            }
+          }
+        } catch (error) {
+          results.errors.push(`Telnet: ${error instanceof Error ? error.message : "Connection failed"}`);
+        }
+      } else {
+        results.errors.push("Telnet: No credentials configured");
+      }
+
+      // Update OLT status based on results
+      const newStatus = results.snmp || results.telnet ? "online" : "offline";
+      const updatedOlt = await storage.updateOlt(olt.id, { 
+        status: newStatus,
+        lastPolled: new Date(),
+      });
+
+      res.json({
+        message: results.snmp || results.telnet ? "Connection successful" : "Connection failed",
+        results,
+        olt: updatedOlt,
+      });
+    } catch (error) {
+      console.error("Test connection error:", error);
+      res.status(500).json({ 
+        message: "Test connection failed",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
   // SNMP polling endpoint
   app.post("/api/olts/:id/poll", isAuthenticated, async (req, res) => {
     try {

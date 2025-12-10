@@ -53,6 +53,8 @@ import {
   Clock,
   MapPin,
   Eye,
+  Wifi,
+  Loader2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -74,10 +76,48 @@ type CreateOltForm = z.infer<typeof createOltFormSchema>;
 export default function OltsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [testingOltId, setTestingOltId] = useState<string | null>(null);
   const { toast } = useToast();
 
   const { data: olts, isLoading } = useQuery<Olt[]>({
     queryKey: ["/api/olts"],
+  });
+
+  const testConnectionMutation = useMutation({
+    mutationFn: async (oltId: string) => {
+      setTestingOltId(oltId);
+      return apiRequest("POST", `/api/olts/${oltId}/test-connection`);
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/olts"] });
+      const results = data.results;
+      toast({
+        title: results.snmp || results.telnet ? "Connection Successful" : "Connection Failed",
+        description: `SNMP: ${results.snmp ? "OK" : "Failed"}, Telnet: ${results.telnet ? "OK" : "Failed"}${results.errors.length > 0 ? ` - ${results.errors[0]}` : ""}`,
+        variant: results.snmp || results.telnet ? "default" : "destructive",
+      });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Test Failed",
+        description: "Could not test OLT connection",
+        variant: "destructive",
+      });
+    },
+    onSettled: () => {
+      setTestingOltId(null);
+    },
   });
 
   const form = useForm<CreateOltForm>({
@@ -575,6 +615,18 @@ export default function OltsPage() {
                       <DropdownMenuItem>
                         <Settings className="h-4 w-4 mr-2" />
                         Configure
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => testConnectionMutation.mutate(olt.id)}
+                        disabled={testingOltId === olt.id}
+                        data-testid={`button-test-connection-${olt.id}`}
+                      >
+                        {testingOltId === olt.id ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Wifi className="h-4 w-4 mr-2" />
+                        )}
+                        Test Connection
                       </DropdownMenuItem>
                       <DropdownMenuItem>
                         <RefreshCw className="h-4 w-4 mr-2" />
