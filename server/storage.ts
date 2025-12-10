@@ -11,6 +11,8 @@ import {
   tr069Presets,
   tr069Parameters,
   tr069Firmware,
+  vpnGateways,
+  vpnTunnels,
   type User,
   type UpsertUser,
   type Tenant,
@@ -33,6 +35,10 @@ import {
   type InsertTr069Preset,
   type Tr069Firmware,
   type InsertTr069Firmware,
+  type VpnGateway,
+  type InsertVpnGateway,
+  type VpnTunnel,
+  type InsertVpnTunnel,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc } from "drizzle-orm";
@@ -109,6 +115,20 @@ export interface IStorage {
   getTr069FirmwareList(tenantId?: string): Promise<Tr069Firmware[]>;
   createTr069Firmware(firmware: InsertTr069Firmware): Promise<Tr069Firmware>;
   deleteTr069Firmware(id: string): Promise<boolean>;
+  
+  // VPN Gateway operations
+  getVpnGateway(id: string): Promise<VpnGateway | undefined>;
+  getVpnGateways(tenantId?: string): Promise<VpnGateway[]>;
+  createVpnGateway(gateway: InsertVpnGateway): Promise<VpnGateway>;
+  updateVpnGateway(id: string, gateway: Partial<VpnGateway>): Promise<VpnGateway | undefined>;
+  deleteVpnGateway(id: string): Promise<boolean>;
+  
+  // VPN Tunnel operations
+  getVpnTunnel(id: string): Promise<VpnTunnel | undefined>;
+  getVpnTunnels(gatewayId?: string): Promise<VpnTunnel[]>;
+  createVpnTunnel(tunnel: InsertVpnTunnel): Promise<VpnTunnel>;
+  updateVpnTunnel(id: string, tunnel: Partial<VpnTunnel>): Promise<VpnTunnel | undefined>;
+  deleteVpnTunnel(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -475,6 +495,71 @@ export class DatabaseStorage implements IStorage {
 
   async deleteTr069Firmware(id: string): Promise<boolean> {
     await db.delete(tr069Firmware).where(eq(tr069Firmware.id, id));
+    return true;
+  }
+
+  // VPN Gateway operations
+  async getVpnGateway(id: string): Promise<VpnGateway | undefined> {
+    const [gateway] = await db.select().from(vpnGateways).where(eq(vpnGateways.id, id));
+    return gateway;
+  }
+
+  async getVpnGateways(tenantId?: string): Promise<VpnGateway[]> {
+    if (tenantId) {
+      return db.select().from(vpnGateways).where(eq(vpnGateways.tenantId, tenantId)).orderBy(desc(vpnGateways.createdAt));
+    }
+    return db.select().from(vpnGateways).orderBy(desc(vpnGateways.createdAt));
+  }
+
+  async createVpnGateway(gateway: InsertVpnGateway): Promise<VpnGateway> {
+    const [created] = await db.insert(vpnGateways).values(gateway).returning();
+    return created;
+  }
+
+  async updateVpnGateway(id: string, gateway: Partial<VpnGateway>): Promise<VpnGateway | undefined> {
+    const [updated] = await db
+      .update(vpnGateways)
+      .set({ ...gateway, updatedAt: new Date() })
+      .where(eq(vpnGateways.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteVpnGateway(id: string): Promise<boolean> {
+    await db.delete(vpnTunnels).where(eq(vpnTunnels.gatewayId, id));
+    await db.delete(vpnGateways).where(eq(vpnGateways.id, id));
+    return true;
+  }
+
+  // VPN Tunnel operations
+  async getVpnTunnel(id: string): Promise<VpnTunnel | undefined> {
+    const [tunnel] = await db.select().from(vpnTunnels).where(eq(vpnTunnels.id, id));
+    return tunnel;
+  }
+
+  async getVpnTunnels(gatewayId?: string): Promise<VpnTunnel[]> {
+    if (gatewayId) {
+      return db.select().from(vpnTunnels).where(eq(vpnTunnels.gatewayId, gatewayId)).orderBy(desc(vpnTunnels.createdAt));
+    }
+    return db.select().from(vpnTunnels).orderBy(desc(vpnTunnels.createdAt));
+  }
+
+  async createVpnTunnel(tunnel: InsertVpnTunnel): Promise<VpnTunnel> {
+    const [created] = await db.insert(vpnTunnels).values(tunnel).returning();
+    return created;
+  }
+
+  async updateVpnTunnel(id: string, tunnel: Partial<VpnTunnel>): Promise<VpnTunnel | undefined> {
+    const [updated] = await db
+      .update(vpnTunnels)
+      .set({ ...tunnel, updatedAt: new Date() })
+      .where(eq(vpnTunnels.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteVpnTunnel(id: string): Promise<boolean> {
+    await db.delete(vpnTunnels).where(eq(vpnTunnels.id, id));
     return true;
   }
 }

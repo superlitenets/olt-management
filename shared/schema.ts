@@ -457,6 +457,92 @@ export const tr069FirmwareRelations = relations(tr069Firmware, ({ one }) => ({
   }),
 }));
 
+// VPN Enums
+export const vpnTypeEnum = pgEnum("vpn_type", ["wireguard", "openvpn", "ipsec", "ssh_tunnel"]);
+export const vpnStatusEnum = pgEnum("vpn_status", ["connected", "disconnected", "connecting", "error"]);
+
+// VPN Gateways - VPN endpoints/concentrators per tenant
+export const vpnGateways = pgTable("vpn_gateways", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  vpnType: vpnTypeEnum("vpn_type").default("wireguard"),
+  endpoint: varchar("endpoint", { length: 255 }),
+  port: integer("port").default(51820),
+  publicKey: text("public_key"),
+  privateKey: text("private_key"),
+  listenPort: integer("listen_port"),
+  allowedIps: text("allowed_ips"),
+  dns: varchar("dns", { length: 255 }),
+  mtu: integer("mtu").default(1420),
+  persistentKeepalive: integer("persistent_keepalive").default(25),
+  status: vpnStatusEnum("status").default("disconnected"),
+  lastConnected: timestamp("last_connected"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// VPN Tunnels - Individual tunnel configurations for connecting to OLTs
+export const vpnTunnels = pgTable("vpn_tunnels", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  gatewayId: varchar("gateway_id").references(() => vpnGateways.id).notNull(),
+  oltId: varchar("olt_id").references(() => olts.id),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  peerPublicKey: text("peer_public_key"),
+  peerEndpoint: varchar("peer_endpoint", { length: 255 }),
+  peerPort: integer("peer_port"),
+  localAddress: varchar("local_address", { length: 45 }),
+  allowedIps: text("allowed_ips"),
+  preSharedKey: text("pre_shared_key"),
+  status: vpnStatusEnum("status").default("disconnected"),
+  lastHandshake: timestamp("last_handshake"),
+  bytesReceived: integer("bytes_received").default(0),
+  bytesSent: integer("bytes_sent").default(0),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// VPN Relations
+export const vpnGatewaysRelations = relations(vpnGateways, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [vpnGateways.tenantId],
+    references: [tenants.id],
+  }),
+  tunnels: many(vpnTunnels),
+}));
+
+export const vpnTunnelsRelations = relations(vpnTunnels, ({ one }) => ({
+  gateway: one(vpnGateways, {
+    fields: [vpnTunnels.gatewayId],
+    references: [vpnGateways.id],
+  }),
+  olt: one(olts, {
+    fields: [vpnTunnels.oltId],
+    references: [olts.id],
+  }),
+}));
+
+// VPN Insert Schemas
+export const insertVpnGatewaySchema = createInsertSchema(vpnGateways).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastConnected: true,
+});
+
+export const insertVpnTunnelSchema = createInsertSchema(vpnTunnels).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastHandshake: true,
+  bytesReceived: true,
+  bytesSent: true,
+});
+
 // TR-069 Insert Schemas
 export const insertTr069DeviceSchema = createInsertSchema(tr069Devices).omit({
   id: true,
@@ -519,3 +605,9 @@ export type Tr069Parameter = typeof tr069Parameters.$inferSelect;
 
 export type Tr069Firmware = typeof tr069Firmware.$inferSelect;
 export type InsertTr069Firmware = z.infer<typeof insertTr069FirmwareSchema>;
+
+export type VpnGateway = typeof vpnGateways.$inferSelect;
+export type InsertVpnGateway = z.infer<typeof insertVpnGatewaySchema>;
+
+export type VpnTunnel = typeof vpnTunnels.$inferSelect;
+export type InsertVpnTunnel = z.infer<typeof insertVpnTunnelSchema>;
