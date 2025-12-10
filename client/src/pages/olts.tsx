@@ -128,10 +128,11 @@ export default function OltsPage() {
       model: "",
       ipAddress: "",
       snmpCommunity: "public",
+      snmpWriteCommunity: "private",
       snmpPort: 161,
       sshUsername: "",
       sshPassword: "",
-      sshPort: 22,
+      sshPort: 23,
       networkType: "gpon",
       totalPorts: 16,
       location: "",
@@ -274,7 +275,7 @@ export default function OltsPage() {
                       <FormItem>
                         <FormLabel>Model</FormLabel>
                         <FormControl>
-                          <Input placeholder="MA5680T" {...field} data-testid="input-olt-model" />
+                          <Input placeholder="MA5680T" {...field} value={field.value ?? ""} data-testid="input-olt-model" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -289,7 +290,7 @@ export default function OltsPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Network Type</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select onValueChange={field.onChange} defaultValue={field.value ?? "gpon"}>
                           <FormControl>
                             <SelectTrigger data-testid="select-olt-network-type">
                               <SelectValue placeholder="Select type" />
@@ -313,7 +314,7 @@ export default function OltsPage() {
                       <FormItem>
                         <FormLabel>Total PON Ports</FormLabel>
                         <FormControl>
-                          <Input type="number" {...field} data-testid="input-olt-ports" />
+                          <Input type="number" {...field} value={field.value ?? 16} data-testid="input-olt-ports" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -327,9 +328,9 @@ export default function OltsPage() {
                     name="snmpCommunity"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>SNMP Community</FormLabel>
+                        <FormLabel>SNMP Read Community</FormLabel>
                         <FormControl>
-                          <Input placeholder="public" {...field} data-testid="input-olt-snmp" />
+                          <Input placeholder="public" {...field} value={field.value ?? ""} data-testid="input-olt-snmp" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -337,12 +338,12 @@ export default function OltsPage() {
                   />
                   <FormField
                     control={form.control}
-                    name="snmpPort"
+                    name="snmpWriteCommunity"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>SNMP Port</FormLabel>
+                        <FormLabel>SNMP Write Community</FormLabel>
                         <FormControl>
-                          <Input type="number" {...field} data-testid="input-olt-snmp-port" />
+                          <Input placeholder="private" {...field} value={field.value ?? ""} data-testid="input-olt-snmp-write" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -350,15 +351,29 @@ export default function OltsPage() {
                   />
                 </div>
 
+                <FormField
+                  control={form.control}
+                  name="snmpPort"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>SNMP Port</FormLabel>
+                      <FormControl>
+                        <Input type="number" {...field} value={field.value ?? 161} data-testid="input-olt-snmp-port" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
                 <div className="grid grid-cols-3 gap-4">
                   <FormField
                     control={form.control}
                     name="sshUsername"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>SSH Username</FormLabel>
+                        <FormLabel>CLI Username</FormLabel>
                         <FormControl>
-                          <Input placeholder="admin" {...field} data-testid="input-olt-ssh-user" />
+                          <Input placeholder="admin" {...field} value={field.value ?? ""} data-testid="input-olt-ssh-user" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -369,9 +384,9 @@ export default function OltsPage() {
                     name="sshPassword"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>SSH Password</FormLabel>
+                        <FormLabel>CLI Password</FormLabel>
                         <FormControl>
-                          <Input type="password" {...field} data-testid="input-olt-ssh-pass" />
+                          <Input type="password" {...field} value={field.value ?? ""} data-testid="input-olt-ssh-pass" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -382,9 +397,9 @@ export default function OltsPage() {
                     name="sshPort"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>SSH Port</FormLabel>
+                        <FormLabel>Telnet/SSH Port</FormLabel>
                         <FormControl>
-                          <Input type="number" {...field} data-testid="input-olt-ssh-port" />
+                          <Input type="number" {...field} value={field.value ?? 23} data-testid="input-olt-ssh-port" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -399,7 +414,7 @@ export default function OltsPage() {
                     <FormItem>
                       <FormLabel>Location</FormLabel>
                       <FormControl>
-                        <Input placeholder="Data Center 1" {...field} data-testid="input-olt-location" />
+                        <Input placeholder="Data Center 1" {...field} value={field.value ?? ""} data-testid="input-olt-location" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -534,7 +549,7 @@ export default function OltsPage() {
                     <FormItem>
                       <FormLabel>Notes</FormLabel>
                       <FormControl>
-                        <Textarea placeholder="Additional notes..." {...field} data-testid="input-olt-notes" />
+                        <Textarea placeholder="Additional notes..." {...field} value={field.value ?? ""} data-testid="input-olt-notes" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
