@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { createAcsServer } from "./acs";
 
 const app = express();
 const httpServer = createServer(app);
@@ -95,4 +96,10 @@ app.use((req, res, next) => {
       log(`serving on port ${port}`);
     },
   );
+
+  // Start the TR-069/ACS server on port 7547
+  const acsServer = createAcsServer();
+  acsServer.listen(7547, "0.0.0.0", () => {
+    log("TR-069/ACS server listening on port 7547", "acs");
+  });
 })();

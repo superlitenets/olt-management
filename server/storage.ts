@@ -86,7 +86,7 @@ export interface IStorage {
   getTr069DeviceByDeviceId(deviceId: string): Promise<Tr069Device | undefined>;
   getTr069Devices(tenantId?: string): Promise<Tr069Device[]>;
   createTr069Device(device: InsertTr069Device): Promise<Tr069Device>;
-  updateTr069Device(id: string, device: Partial<InsertTr069Device>): Promise<Tr069Device | undefined>;
+  updateTr069Device(id: string, device: Partial<Tr069Device>): Promise<Tr069Device | undefined>;
   deleteTr069Device(id: string): Promise<boolean>;
   
   // TR-069 Task operations
@@ -94,7 +94,7 @@ export interface IStorage {
   getTr069Tasks(deviceId?: string): Promise<Tr069Task[]>;
   getPendingTr069Tasks(deviceId: string): Promise<Tr069Task[]>;
   createTr069Task(task: InsertTr069Task): Promise<Tr069Task>;
-  updateTr069Task(id: string, task: Partial<InsertTr069Task>): Promise<Tr069Task | undefined>;
+  updateTr069Task(id: string, task: Partial<Tr069Task>): Promise<Tr069Task | undefined>;
   deleteTr069Task(id: string): Promise<boolean>;
   
   // TR-069 Preset operations
@@ -369,7 +369,7 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async updateTr069Device(id: string, device: Partial<InsertTr069Device>): Promise<Tr069Device | undefined> {
+  async updateTr069Device(id: string, device: Partial<Tr069Device>): Promise<Tr069Device | undefined> {
     const [updated] = await db
       .update(tr069Devices)
       .set({ ...device, updatedAt: new Date() })
@@ -409,7 +409,7 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async updateTr069Task(id: string, task: Partial<InsertTr069Task>): Promise<Tr069Task | undefined> {
+  async updateTr069Task(id: string, task: Partial<Tr069Task>): Promise<Tr069Task | undefined> {
     const [updated] = await db
       .update(tr069Tasks)
       .set(task)
