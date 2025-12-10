@@ -40,9 +40,16 @@ const STANDARD_OIDS = {
   ifNumber: "1.3.6.1.2.1.2.1.0",
 };
 
-// Huawei OLT specific OIDs (SmartAX series)
+// Huawei OLT specific OIDs (SmartAX MA5600/MA5683 series)
+// Note: CPU, memory, temperature are per-board. We walk the table to get all boards.
 const HUAWEI_OIDS = {
-  // System info
+  // Board-level metrics (hwMusaBoardEntry) - walk these to get per-board values
+  // Format: OID.<frameId>.<slotId>
+  boardCpuUsage: "1.3.6.1.4.1.2011.6.3.3.2.1.6",      // hwBoardCpuRate
+  boardMemoryUsage: "1.3.6.1.4.1.2011.6.3.3.2.1.8",   // hwBoardRamUseRate  
+  boardTemperature: "1.3.6.1.4.1.2011.6.3.3.2.1.10",  // hwBoardTemperature
+  
+  // Alternative system-level OIDs (hwEntitySystemModel - may not exist on all models)
   cpuUsage: "1.3.6.1.4.1.2011.6.3.4.1.2.0",
   memoryUsage: "1.3.6.1.4.1.2011.6.3.4.1.3.0",
   temperature: "1.3.6.1.4.1.2011.6.3.4.1.4.0",
@@ -209,36 +216,18 @@ export class OltSnmpClient {
         STANDARD_OIDS.sysName,
         STANDARD_OIDS.sysUptime,
       ];
-      
-      const vendorOids = [
-        this.oids.cpuUsage,
-        this.oids.memoryUsage,
-        this.oids.temperature,
-      ];
 
       console.log(`[SNMP] Querying standard OIDs: ${standardOids.join(", ")}`);
-      console.log(`[SNMP] Querying vendor OIDs (${this.vendor}): ${vendorOids.join(", ")}`);
 
-      const [standardResults, vendorResults] = await Promise.all([
-        this.snmpClient.get(standardOids).catch((err) => {
-          console.error(`[SNMP] Standard OID query failed:`, err.message);
-          return new Map();
-        }),
-        this.snmpClient.get(vendorOids).catch((err) => {
-          console.error(`[SNMP] Vendor OID query failed:`, err.message);
-          return new Map();
-        }),
-      ]);
+      // Get standard MIB data first
+      const standardResults = await this.snmpClient.get(standardOids).catch((err) => {
+        console.error(`[SNMP] Standard OID query failed:`, err.message);
+        return new Map();
+      });
 
       console.log(`[SNMP] Standard results: ${standardResults.size} values`);
-      console.log(`[SNMP] Vendor results: ${vendorResults.size} values`);
-      
-      // Log all retrieved values for debugging
       standardResults.forEach((value, oid) => {
         console.log(`[SNMP] Standard ${oid}: ${value}`);
-      });
-      vendorResults.forEach((value, oid) => {
-        console.log(`[SNMP] Vendor ${oid}: ${value}`);
       });
 
       const data: OltSnmpData = {};
@@ -246,7 +235,6 @@ export class OltSnmpClient {
       // Parse standard MIB data
       if (standardResults.has(STANDARD_OIDS.sysDescr)) {
         data.sysDescr = standardResults.get(STANDARD_OIDS.sysDescr);
-        // Try to extract firmware version from description
         const fwMatch = data.sysDescr?.match(/Version\s+([\d.]+)/i);
         if (fwMatch) {
           data.firmwareVersion = fwMatch[1];
@@ -258,27 +246,41 @@ export class OltSnmpClient {
       }
       
       if (standardResults.has(STANDARD_OIDS.sysUptime)) {
-        // Uptime is in hundredths of a second, convert to seconds
         data.sysUptime = Math.floor(standardResults.get(STANDARD_OIDS.sysUptime) / 100);
       }
 
-      // Parse vendor-specific data
-      if (vendorResults.has(this.oids.cpuUsage)) {
-        data.cpuUsage = Number(vendorResults.get(this.oids.cpuUsage));
+      // For Huawei SmartAX (MA5600/MA5683 series), use board-level metrics via SNMP walk
+      if (this.vendor === "huawei") {
+        await this.getHuaweiBoardMetrics(data);
       } else {
-        console.log(`[SNMP] CPU usage OID ${this.oids.cpuUsage} not found in results`);
-      }
-      
-      if (vendorResults.has(this.oids.memoryUsage)) {
-        data.memoryUsage = Number(vendorResults.get(this.oids.memoryUsage));
-      } else {
-        console.log(`[SNMP] Memory usage OID ${this.oids.memoryUsage} not found in results`);
-      }
-      
-      if (vendorResults.has(this.oids.temperature)) {
-        data.temperature = Number(vendorResults.get(this.oids.temperature));
-      } else {
-        console.log(`[SNMP] Temperature OID ${this.oids.temperature} not found in results`);
+        // ZTE and others - try direct OID get
+        const vendorOids = [
+          this.oids.cpuUsage,
+          this.oids.memoryUsage,
+          this.oids.temperature,
+        ];
+        
+        console.log(`[SNMP] Querying vendor OIDs (${this.vendor}): ${vendorOids.join(", ")}`);
+        
+        const vendorResults = await this.snmpClient.get(vendorOids).catch((err) => {
+          console.error(`[SNMP] Vendor OID query failed:`, err.message);
+          return new Map();
+        });
+
+        console.log(`[SNMP] Vendor results: ${vendorResults.size} values`);
+        vendorResults.forEach((value, oid) => {
+          console.log(`[SNMP] Vendor ${oid}: ${value}`);
+        });
+
+        if (vendorResults.has(this.oids.cpuUsage)) {
+          data.cpuUsage = Number(vendorResults.get(this.oids.cpuUsage));
+        }
+        if (vendorResults.has(this.oids.memoryUsage)) {
+          data.memoryUsage = Number(vendorResults.get(this.oids.memoryUsage));
+        }
+        if (vendorResults.has(this.oids.temperature)) {
+          data.temperature = Number(vendorResults.get(this.oids.temperature));
+        }
       }
 
       console.log(`[SNMP] Final data:`, JSON.stringify(data));
@@ -286,6 +288,68 @@ export class OltSnmpClient {
     } catch (error) {
       console.error("SNMP getSystemInfo error:", error);
       throw error;
+    }
+  }
+
+  private async getHuaweiBoardMetrics(data: OltSnmpData): Promise<void> {
+    const huaweiOids = this.oids as typeof HUAWEI_OIDS;
+    
+    console.log(`[SNMP] Walking Huawei board metrics tables...`);
+    
+    try {
+      // Walk board CPU usage table
+      const cpuResults = await this.snmpClient.walk(huaweiOids.boardCpuUsage).catch((err) => {
+        console.log(`[SNMP] Board CPU walk failed: ${err.message}`);
+        return new Map();
+      });
+      
+      console.log(`[SNMP] Board CPU results: ${cpuResults.size} entries`);
+      if (cpuResults.size > 0) {
+        // Get the highest CPU usage across all boards (usually control board has highest)
+        let maxCpu = 0;
+        cpuResults.forEach((value, oid) => {
+          const cpu = Number(value);
+          console.log(`[SNMP] Board CPU ${oid}: ${cpu}%`);
+          if (cpu > maxCpu) maxCpu = cpu;
+        });
+        data.cpuUsage = maxCpu;
+      }
+
+      // Walk board memory usage table
+      const memResults = await this.snmpClient.walk(huaweiOids.boardMemoryUsage).catch((err) => {
+        console.log(`[SNMP] Board memory walk failed: ${err.message}`);
+        return new Map();
+      });
+      
+      console.log(`[SNMP] Board memory results: ${memResults.size} entries`);
+      if (memResults.size > 0) {
+        let maxMem = 0;
+        memResults.forEach((value, oid) => {
+          const mem = Number(value);
+          console.log(`[SNMP] Board memory ${oid}: ${mem}%`);
+          if (mem > maxMem) maxMem = mem;
+        });
+        data.memoryUsage = maxMem;
+      }
+
+      // Walk board temperature table
+      const tempResults = await this.snmpClient.walk(huaweiOids.boardTemperature).catch((err) => {
+        console.log(`[SNMP] Board temperature walk failed: ${err.message}`);
+        return new Map();
+      });
+      
+      console.log(`[SNMP] Board temperature results: ${tempResults.size} entries`);
+      if (tempResults.size > 0) {
+        let maxTemp = 0;
+        tempResults.forEach((value, oid) => {
+          const temp = Number(value);
+          console.log(`[SNMP] Board temp ${oid}: ${temp}°C`);
+          if (temp > maxTemp) maxTemp = temp;
+        });
+        data.temperature = maxTemp;
+      }
+    } catch (error) {
+      console.error(`[SNMP] Huawei board metrics error:`, error);
     }
   }
 
