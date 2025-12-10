@@ -8,8 +8,16 @@ import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
 
+// Check if we're running in Replit environment
+export function isReplitEnvironment(): boolean {
+  return !!(process.env.REPL_ID && process.env.REPL_ID.length > 0);
+}
+
 const getOidcConfig = memoize(
   async () => {
+    if (!isReplitEnvironment()) {
+      throw new Error("Not in Replit environment");
+    }
     return await client.discovery(
       new URL(process.env.ISSUER_URL ?? "https://replit.com/oidc"),
       process.env.REPL_ID!
@@ -34,7 +42,7 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: true,
+      secure: process.env.NODE_ENV === "production",
       maxAge: sessionTtl,
     },
   });
@@ -65,6 +73,32 @@ export async function setupAuth(app: Express) {
   app.use(getSession());
   app.use(passport.initialize());
   app.use(passport.session());
+
+  // Skip Replit Auth setup if not in Replit environment
+  if (!isReplitEnvironment()) {
+    console.log("Not in Replit environment - skipping Replit Auth setup");
+    
+    // Setup serialization for local auth only
+    passport.serializeUser((user: Express.User, cb) => cb(null, user));
+    passport.deserializeUser((user: Express.User, cb) => cb(null, user));
+    
+    // Return placeholder routes that redirect to local auth
+    app.get("/api/login", (req, res) => {
+      res.redirect("/auth");
+    });
+
+    app.get("/api/callback", (req, res) => {
+      res.redirect("/auth");
+    });
+
+    app.get("/api/logout", (req, res) => {
+      req.logout(() => {
+        res.redirect("/");
+      });
+    });
+    
+    return;
+  }
 
   const config = await getOidcConfig();
 
@@ -157,6 +191,12 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
   const refreshToken = user.refresh_token;
   if (!refreshToken) {
     res.status(401).json({ message: "Unauthorized" });
+    return;
+  }
+
+  // Only try to refresh if in Replit environment
+  if (!isReplitEnvironment()) {
+    res.status(401).json({ message: "Session expired" });
     return;
   }
 

@@ -1,0 +1,102 @@
+root@sms:/home/superlite/olt-management# docker compose logs app --tail 100
+app-1  |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+app-1  |     at async Yk.maxAge (/dist/index.cjs:84:121135)
+app-1  |     at async t8 (/dist/index.cjs:84:121937)
+app-1  |     at async f8 (/dist/index.cjs:84:126096)
+app-1  |     at async /dist/index.cjs:207:1069 {
+app-1  |   code: 'ERR_INVALID_ARG_TYPE',
+app-1  |   [cause]: undefined
+app-1  | }
+app-1  |
+app-1  | Node.js v20.19.6
+app-1  | file:///node_modules/openid-client/build/index.js:89
+app-1  |     const err = new TypeError(message, { cause });
+app-1  |                 ^
+app-1  |
+app-1  | TypeError: "clientId" must be a non-empty string
+app-1  |     at CodedTypeError (file:///node_modules/openid-client/build/index.js:89:17)
+app-1  |     at new Configuration (file:///node_modules/openid-client/build/index.js:463:19)
+app-1  |     at Object.discovery (file:///node_modules/openid-client/build/index.js:244:22)
+app-1  |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+app-1  |     at async Yk.maxAge (/dist/index.cjs:84:121135)
+app-1  |     at async t8 (/dist/index.cjs:84:121937)
+app-1  |     at async f8 (/dist/index.cjs:84:126096)
+app-1  |     at async /dist/index.cjs:207:1069 {
+app-1  |   code: 'ERR_INVALID_ARG_TYPE',
+app-1  |   [cause]: undefined
+app-1  | }
+app-1  |
+app-1  | Node.js v20.19.6
+app-1  | file:///node_modules/openid-client/build/index.js:89
+app-1  |     const err = new TypeError(message, { cause });
+app-1  |                 ^
+app-1  |
+app-1  | TypeError: "clientId" must be a non-empty string
+app-1  |     at CodedTypeError (file:///node_modules/openid-client/build/index.js:89:17)
+app-1  |     at new Configuration (file:///node_modules/openid-client/build/index.js:463:19)
+app-1  |     at Object.discovery (file:///node_modules/openid-client/build/index.js:244:22)
+app-1  |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+app-1  |     at async Yk.maxAge (/dist/index.cjs:84:121135)
+app-1  |     at async t8 (/dist/index.cjs:84:121937)
+app-1  |     at async f8 (/dist/index.cjs:84:126096)
+app-1  |     at async /dist/index.cjs:207:1069 {
+app-1  |   code: 'ERR_INVALID_ARG_TYPE',
+app-1  |   [cause]: undefined
+app-1  | }
+app-1  |
+app-1  | Node.js v20.19.6
+app-1  | file:///node_modules/openid-client/build/index.js:89
+app-1  |     const err = new TypeError(message, { cause });
+app-1  |                 ^
+app-1  |
+app-1  | TypeError: "clientId" must be a non-empty string
+app-1  |     at CodedTypeError (file:///node_modules/openid-client/build/index.js:89:17)
+app-1  |     at new Configuration (file:///node_modules/openid-client/build/index.js:463:19)
+app-1  |     at Object.discovery (file:///node_modules/openid-client/build/index.js:244:22)
+app-1  |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+app-1  |     at async Yk.maxAge (/dist/index.cjs:84:121135)
+app-1  |     at async t8 (/dist/index.cjs:84:121937)
+app-1  |     at async f8 (/dist/index.cjs:84:126096)
+app-1  |     at async /dist/index.cjs:207:1069 {
+app-1  |   code: 'ERR_INVALID_ARG_TYPE',
+app-1  |   [cause]: undefined
+app-1  | }
+app-1  |
+app-1  | Node.js v20.19.6
+app-1  | file:///node_modules/openid-client/build/index.js:89
+app-1  |     const err = new TypeError(message, { cause });
+app-1  |                 ^
+app-1  |
+app-1  | TypeError: "clientId" must be a non-empty string
+app-1  |     at CodedTypeError (file:///node_modules/openid-client/build/index.js:89:17)
+app-1  |     at new Configuration (file:///node_modules/openid-client/build/index.js:463:19)
+app-1  |     at Object.discovery (file:///node_modules/openid-client/build/index.js:244:22)
+app-1  |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+app-1  |     at async Yk.maxAge (/dist/index.cjs:84:121135)
+app-1  |     at async t8 (/dist/index.cjs:84:121937)
+app-1  |     at async f8 (/dist/index.cjs:84:126096)
+app-1  |     at async /dist/index.cjs:207:1069 {
+app-1  |   code: 'ERR_INVALID_ARG_TYPE',
+app-1  |   [cause]: undefined
+app-1  | }
+app-1  |
+app-1  | Node.js v20.19.6
+app-1  | file:///node_modules/openid-client/build/index.js:89
+app-1  |     const err = new TypeError(message, { cause });
+app-1  |                 ^
+app-1  |
+app-1  | TypeError: "clientId" must be a non-empty string
+app-1  |     at CodedTypeError (file:///node_modules/openid-client/build/index.js:89:17)
+app-1  |     at new Configuration (file:///node_modules/openid-client/build/index.js:463:19)
+app-1  |     at Object.discovery (file:///node_modules/openid-client/build/index.js:244:22)
+app-1  |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+app-1  |     at async Yk.maxAge (/dist/index.cjs:84:121135)
+app-1  |     at async t8 (/dist/index.cjs:84:121937)
+app-1  |     at async f8 (/dist/index.cjs:84:126096)
+app-1  |     at async /dist/index.cjs:207:1069 {
+app-1  |   code: 'ERR_INVALID_ARG_TYPE',
+app-1  |   [cause]: undefined
+app-1  | }
+app-1  |
+app-1  | Node.js v20.19.6
+root@sms:/home/superlite/olt-management#
