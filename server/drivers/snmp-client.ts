@@ -296,6 +296,9 @@ export class OltSnmpClient {
     
     console.log(`[SNMP] Walking Huawei board metrics tables...`);
     
+    // Huawei uses 255 (0xFF) as "not applicable" for boards without monitoring
+    const INVALID_VALUE = 255;
+    
     try {
       // Walk board CPU usage table
       const cpuResults = await this.snmpClient.walk(huaweiOids.boardCpuUsage).catch((err) => {
@@ -305,14 +308,17 @@ export class OltSnmpClient {
       
       console.log(`[SNMP] Board CPU results: ${cpuResults.size} entries`);
       if (cpuResults.size > 0) {
-        // Get the highest CPU usage across all boards (usually control board has highest)
-        let maxCpu = 0;
+        // Get the highest valid CPU usage (filter out 255 = not applicable)
+        let maxCpu = -1;
         cpuResults.forEach((value, oid) => {
           const cpu = Number(value);
-          console.log(`[SNMP] Board CPU ${oid}: ${cpu}%`);
-          if (cpu > maxCpu) maxCpu = cpu;
+          const isValid = cpu >= 0 && cpu <= 100;
+          console.log(`[SNMP] Board CPU ${oid}: ${cpu}%${isValid ? "" : " (invalid)"}`);
+          if (isValid && cpu > maxCpu) maxCpu = cpu;
         });
-        data.cpuUsage = maxCpu;
+        if (maxCpu >= 0) {
+          data.cpuUsage = maxCpu;
+        }
       }
 
       // Walk board memory usage table
@@ -323,13 +329,16 @@ export class OltSnmpClient {
       
       console.log(`[SNMP] Board memory results: ${memResults.size} entries`);
       if (memResults.size > 0) {
-        let maxMem = 0;
+        let maxMem = -1;
         memResults.forEach((value, oid) => {
           const mem = Number(value);
-          console.log(`[SNMP] Board memory ${oid}: ${mem}%`);
-          if (mem > maxMem) maxMem = mem;
+          const isValid = mem >= 0 && mem <= 100;
+          console.log(`[SNMP] Board memory ${oid}: ${mem}%${isValid ? "" : " (invalid)"}`);
+          if (isValid && mem > maxMem) maxMem = mem;
         });
-        data.memoryUsage = maxMem;
+        if (maxMem >= 0) {
+          data.memoryUsage = maxMem;
+        }
       }
 
       // Walk board temperature table
@@ -340,13 +349,18 @@ export class OltSnmpClient {
       
       console.log(`[SNMP] Board temperature results: ${tempResults.size} entries`);
       if (tempResults.size > 0) {
-        let maxTemp = 0;
+        // Temperature: filter out 0, 1 (not available) and values > 100 (invalid)
+        let maxTemp = -1;
         tempResults.forEach((value, oid) => {
           const temp = Number(value);
-          console.log(`[SNMP] Board temp ${oid}: ${temp}°C`);
-          if (temp > maxTemp) maxTemp = temp;
+          // Valid temps are typically 20-80°C for OLT boards
+          const isValid = temp > 10 && temp < 100;
+          console.log(`[SNMP] Board temp ${oid}: ${temp}°C${isValid ? "" : " (likely invalid)"}`);
+          if (isValid && temp > maxTemp) maxTemp = temp;
         });
-        data.temperature = maxTemp;
+        if (maxTemp > 0) {
+          data.temperature = maxTemp;
+        }
       }
     } catch (error) {
       console.error(`[SNMP] Huawei board metrics error:`, error);

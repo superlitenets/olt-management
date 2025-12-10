@@ -1,0 +1,34 @@
+
+root@sms:/home/superlite/olt-management# docker logs -f olt-management-app-1
+Not in Replit environment - skipping Replit Auth setup
+11:24:42 PM [express] serving on port 5000
+TR-069 ACS Server running on port 7547
+11:24:42 PM [acs] TR-069/ACS server listening on port 7547
+11:26:04 PM [express] GET /api/auth/user 304 in 93ms :: {"id":"efe26a2b-0a0a-4ba9-a652-b3549048d532","email":"muturi@superlite.co.ke","username":"superlite","password":"$2b$10$Hqtb.12ibjDn35nLsHCg9.ekDml32gOj6TXCpH5UXIr85tZahacmm","firstName":"Martin","lastName":"Muriu","profileImageUrl":null,"role":"operator","tenantId":null,"isActive":true,"createdAt":"2025-12-10T21:48:13.350Z","updatedAt":"2025-12-10T21:48:13.350Z"}
+11:26:04 PM [express] GET /api/alerts 304 in 26ms :: []
+11:26:04 PM [express] GET /api/olts/f99ff270-2357-4736-8d3e-8bf1aedef897 304 in 40ms :: {"id":"f99ff270-2357-4736-8d3e-8bf1aedef897","tenantId":"2b6abf72-c1e9-4ba1-bf07-ee96a25b5cf7","name":"HURUMA-OLT","vendor":"huawei","model":"Huawei-MA5608T","ipAddress":"10.98.0.2","snmpCommunity":"nchpu6stZ0Kw","snmpWriteCommunity":"d7i8NFvlthsf","snmpPort":161,"sshUsername":"oneisp","sshPassword":"oneisp1","sshPort":23,"networkType":"gpon","status":"online","totalPorts":24,"activeOnus":24,"cpuUsage":null,"memoryUsage":null,"temperature":null,"uptime":4093471,"firmwareVersion":null,"serialNumber":null,"location":"","notes":"","lastPolled":"2025-12-10T23:19:14.396Z","acsEnabled":false,"acsUrl":"","acsUsername":"","acsPassword":"","acsPeriodicInformInterval":3600,"createdAt":"2025-12-10T22:52:46.203Z","updatedAt":"2025-12-10T23:19:14.396Z"}
+11:26:04 PM [express] GET /api/onus 304 in 55ms :: []
+[SNMP] Querying standard OIDs: 1.3.6.1.2.1.1.1.0, 1.3.6.1.2.1.1.5.0, 1.3.6.1.2.1.1.3.0
+[SNMP] Standard results: 3 values
+[SNMP] Standard 1.3.6.1.2.1.1.1.0: Huawei Integrated Access Software
+[SNMP] Standard 1.3.6.1.2.1.1.5.0: MA5683T
+[SNMP] Standard 1.3.6.1.2.1.1.3.0: 409390088
+[SNMP] Walking Huawei board metrics tables...
+[SNMP] Board CPU results: 4 entries
+[SNMP] Board CPU 1.3.6.1.4.1.2011.6.3.3.2.1.6.0.0: 255%
+[SNMP] Board CPU 1.3.6.1.4.1.2011.6.3.3.2.1.6.0.1: 255%
+[SNMP] Board CPU 1.3.6.1.4.1.2011.6.3.3.2.1.6.0.6: 1%
+[SNMP] Board CPU 1.3.6.1.4.1.2011.6.3.3.2.1.6.0.8: 255%
+[SNMP] Board memory results: 4 entries
+[SNMP] Board memory 1.3.6.1.4.1.2011.6.3.3.2.1.8.0.0: 2%
+[SNMP] Board memory 1.3.6.1.4.1.2011.6.3.3.2.1.8.0.1: 2%
+[SNMP] Board memory 1.3.6.1.4.1.2011.6.3.3.2.1.8.0.6: 2%
+[SNMP] Board memory 1.3.6.1.4.1.2011.6.3.3.2.1.8.0.8: 2%
+[SNMP] Board temperature results: 4 entries
+[SNMP] Board temp 1.3.6.1.4.1.2011.6.3.3.2.1.10.0.0: 1°C
+[SNMP] Board temp 1.3.6.1.4.1.2011.6.3.3.2.1.10.0.1: 1°C
+[SNMP] Board temp 1.3.6.1.4.1.2011.6.3.3.2.1.10.0.6: 1°C
+[SNMP] Board temp 1.3.6.1.4.1.2011.6.3.3.2.1.10.0.8: 1°C
+[SNMP] Final data: {"sysDescr":"Huawei Integrated Access Software","sysName":"MA5683T","sysUptime":4093900,"cpuUsage":255,"memoryUsage":2,"temperature":1}
+11:26:23 PM [express] POST /api/olts/f99ff270-2357-4736-8d3e-8bf1aedef897/poll 200 in 357ms :: {"message":"SNMP poll successful","data":{"sysDescr":"Huawei Integrated Access Software","sysName":"MA5683T","sysUptime":4093900,"cpuUsage":255,"memoryUsage":2,"temperature":1,"activeOnus":24},"olt":{"id":"f99ff270-2357-4736-8d3e-8bf1aedef897","tenantId":"2b6abf72-c1e9-4ba1-bf07-ee96a25b5cf7","name":"HURUMA-OLT","vendor":"huawei","model":"Huawei-MA5608T","ipAddress":"10.98.0.2","snmpCommunity":"nchpu6stZ0Kw","snmpWriteCommunity":"d7i8NFvlthsf","snmpPort":161,"sshUsername":"oneisp","sshPassword":"oneisp1","sshPort":23,"networkType":"gpon","status":"online","totalPorts":24,"activeOnus":24,"cpuUsage":255,"memoryUsage":2,"temperature":1,"uptime":4093900,"firmwareVersion":null,"serialNumber":null,"location":"","notes":"","lastPolled":"2025-12-10T23:26:23.911Z","acsEnabled":false,"acsUrl":"","acsUsername":"","acsPassword":"","acsPeriodicInformInterval":3600,"createdAt":"2025-12-10T22:52:46.203Z","updatedAt":"2025-12-10T23:26:23.912Z"}}
+11:26:24 PM [express] GET /api/olts/f99ff270-2357-4736-8d3e-8bf1aedef897 200 in 14ms :: {"id":"f99ff270-2357-4736-8d3e-8bf1aedef897","tenantId":"2b6abf72-c1e9-4ba1-bf07-ee96a25b5cf7","name":"HURUMA-OLT","vendor":"huawei","model":"Huawei-MA5608T","ipAddress":"10.98.0.2","snmpCommunity":"nchpu6stZ0Kw","snmpWriteCommunity":"d7i8NFvlthsf","snmpPort":161,"sshUsername":"oneisp","sshPassword":"oneisp1","sshPort":23,"networkType":"gpon","status":"online","totalPorts":24,"activeOnus":24,"cpuUsage":255,"memoryUsage":2,"temperature":1,"uptime":4093900,"firmwareVersion":null,"serialNumber":null,"location":"","notes":"","lastPolled":"2025-12-10T23:26:23.911Z","acsEnabled":false,"acsUrl":"","acsUsername":"","acsPassword":"","acsPeriodicInformInterval":3600,"createdAt":"2025-12-10T22:52:46.203Z","updatedAt":"2025-12-10T23:26:23.912Z"}
