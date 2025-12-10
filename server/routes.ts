@@ -13,6 +13,8 @@ import {
   insertTr069TaskSchema,
   insertTr069PresetSchema,
   insertTr069FirmwareSchema,
+  insertVpnGatewaySchema,
+  insertVpnTunnelSchema,
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -575,6 +577,178 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting TR-069 firmware:", error);
       res.status(500).json({ message: "Failed to delete TR-069 firmware" });
+    }
+  });
+
+  // VPN Gateway routes
+  app.get("/api/vpn/gateways", isAuthenticated, async (req, res) => {
+    try {
+      const tenantId = req.query.tenantId as string | undefined;
+      const gateways = await storage.getVpnGateways(tenantId);
+      res.json(gateways);
+    } catch (error) {
+      console.error("Error fetching VPN gateways:", error);
+      res.status(500).json({ message: "Failed to fetch VPN gateways" });
+    }
+  });
+
+  app.get("/api/vpn/gateways/:id", isAuthenticated, async (req, res) => {
+    try {
+      const gateway = await storage.getVpnGateway(req.params.id);
+      if (!gateway) {
+        return res.status(404).json({ message: "VPN gateway not found" });
+      }
+      res.json(gateway);
+    } catch (error) {
+      console.error("Error fetching VPN gateway:", error);
+      res.status(500).json({ message: "Failed to fetch VPN gateway" });
+    }
+  });
+
+  app.post("/api/vpn/gateways", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertVpnGatewaySchema.parse(req.body);
+      const gateway = await storage.createVpnGateway(data);
+      broadcast("vpnGateway:created", gateway);
+      res.status(201).json(gateway);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      console.error("Error creating VPN gateway:", error);
+      res.status(500).json({ message: "Failed to create VPN gateway" });
+    }
+  });
+
+  app.put("/api/vpn/gateways/:id", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertVpnGatewaySchema.partial().parse(req.body);
+      const gateway = await storage.updateVpnGateway(req.params.id, data);
+      if (!gateway) {
+        return res.status(404).json({ message: "VPN gateway not found" });
+      }
+      broadcast("vpnGateway:updated", gateway);
+      res.json(gateway);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      console.error("Error updating VPN gateway:", error);
+      res.status(500).json({ message: "Failed to update VPN gateway" });
+    }
+  });
+
+  app.delete("/api/vpn/gateways/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteVpnGateway(req.params.id);
+      broadcast("vpnGateway:deleted", { id: req.params.id });
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting VPN gateway:", error);
+      res.status(500).json({ message: "Failed to delete VPN gateway" });
+    }
+  });
+
+  // VPN Tunnel routes
+  app.get("/api/vpn/tunnels", isAuthenticated, async (req, res) => {
+    try {
+      const gatewayId = req.query.gatewayId as string | undefined;
+      const tunnels = await storage.getVpnTunnels(gatewayId);
+      res.json(tunnels);
+    } catch (error) {
+      console.error("Error fetching VPN tunnels:", error);
+      res.status(500).json({ message: "Failed to fetch VPN tunnels" });
+    }
+  });
+
+  app.get("/api/vpn/tunnels/:id", isAuthenticated, async (req, res) => {
+    try {
+      const tunnel = await storage.getVpnTunnel(req.params.id);
+      if (!tunnel) {
+        return res.status(404).json({ message: "VPN tunnel not found" });
+      }
+      res.json(tunnel);
+    } catch (error) {
+      console.error("Error fetching VPN tunnel:", error);
+      res.status(500).json({ message: "Failed to fetch VPN tunnel" });
+    }
+  });
+
+  app.post("/api/vpn/tunnels", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertVpnTunnelSchema.parse(req.body);
+      const tunnel = await storage.createVpnTunnel(data);
+      broadcast("vpnTunnel:created", tunnel);
+      res.status(201).json(tunnel);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      console.error("Error creating VPN tunnel:", error);
+      res.status(500).json({ message: "Failed to create VPN tunnel" });
+    }
+  });
+
+  app.put("/api/vpn/tunnels/:id", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertVpnTunnelSchema.partial().parse(req.body);
+      const tunnel = await storage.updateVpnTunnel(req.params.id, data);
+      if (!tunnel) {
+        return res.status(404).json({ message: "VPN tunnel not found" });
+      }
+      broadcast("vpnTunnel:updated", tunnel);
+      res.json(tunnel);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      console.error("Error updating VPN tunnel:", error);
+      res.status(500).json({ message: "Failed to update VPN tunnel" });
+    }
+  });
+
+  app.delete("/api/vpn/tunnels/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteVpnTunnel(req.params.id);
+      broadcast("vpnTunnel:deleted", { id: req.params.id });
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting VPN tunnel:", error);
+      res.status(500).json({ message: "Failed to delete VPN tunnel" });
+    }
+  });
+
+  // Generate WireGuard config for a tunnel
+  app.get("/api/vpn/tunnels/:id/config", isAuthenticated, async (req, res) => {
+    try {
+      const tunnel = await storage.getVpnTunnel(req.params.id);
+      if (!tunnel) {
+        return res.status(404).json({ message: "VPN tunnel not found" });
+      }
+      const gateway = await storage.getVpnGateway(tunnel.gatewayId);
+      if (!gateway) {
+        return res.status(404).json({ message: "VPN gateway not found" });
+      }
+
+      const config = `[Interface]
+PrivateKey = ${gateway.privateKey || "<YOUR_PRIVATE_KEY>"}
+Address = ${tunnel.localAddress || "10.0.0.1/24"}
+${gateway.dns ? `DNS = ${gateway.dns}` : ""}
+${gateway.mtu ? `MTU = ${gateway.mtu}` : ""}
+
+[Peer]
+PublicKey = ${tunnel.peerPublicKey || "<PEER_PUBLIC_KEY>"}
+${tunnel.preSharedKey ? `PresharedKey = ${tunnel.preSharedKey}` : ""}
+AllowedIPs = ${tunnel.allowedIps || "0.0.0.0/0"}
+${tunnel.peerEndpoint ? `Endpoint = ${tunnel.peerEndpoint}:${tunnel.peerPort || 51820}` : ""}
+${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepalive}` : ""}`;
+
+      res.setHeader("Content-Type", "text/plain");
+      res.setHeader("Content-Disposition", `attachment; filename="${tunnel.name}.conf"`);
+      res.send(config);
+    } catch (error) {
+      console.error("Error generating VPN config:", error);
+      res.status(500).json({ message: "Failed to generate VPN config" });
     }
   });
 
