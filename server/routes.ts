@@ -18,6 +18,32 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 
+// Helper to resolve tenant ID from authenticated user or create default tenant
+async function resolveTenantId(req: any): Promise<string> {
+  // Check if user has a tenant assigned
+  if (req.user?.claims?.sub) {
+    const user = await storage.getUser(req.user.claims.sub);
+    if (user?.tenantId) {
+      return user.tenantId;
+    }
+  }
+  
+  // Get or create default system tenant
+  const tenants = await storage.getTenants();
+  if (tenants.length > 0) {
+    return tenants[0].id;
+  }
+  
+  // Create default tenant if none exist
+  const defaultTenant = await storage.createTenant({
+    name: "Default Organization",
+    description: "System default tenant",
+    isActive: true,
+  });
+  
+  return defaultTenant.id;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -605,9 +631,12 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/vpn/gateways", isAuthenticated, async (req, res) => {
+  app.post("/api/vpn/gateways", isAuthenticated, async (req: any, res) => {
     try {
-      const data = insertVpnGatewaySchema.parse(req.body);
+      // Resolve tenant from authenticated user context, not client payload
+      const tenantId = await resolveTenantId(req);
+      const { tenantId: _, ...bodyWithoutTenant } = req.body;
+      const data = insertVpnGatewaySchema.parse({ ...bodyWithoutTenant, tenantId });
       const gateway = await storage.createVpnGateway(data);
       broadcast("vpnGateway:created", gateway);
       res.status(201).json(gateway);

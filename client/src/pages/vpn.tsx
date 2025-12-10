@@ -98,7 +98,6 @@ export default function VpnPage() {
     dns: "",
     mtu: 1420,
     persistentKeepalive: 25,
-    tenantId: "default",
   });
 
   const [tunnelForm, setTunnelForm] = useState({
@@ -340,7 +339,6 @@ export default function VpnPage() {
       dns: "",
       mtu: 1420,
       persistentKeepalive: 25,
-      tenantId: "default",
     });
   };
 
@@ -373,7 +371,6 @@ export default function VpnPage() {
       dns: gateway.dns || "",
       mtu: gateway.mtu || 1420,
       persistentKeepalive: gateway.persistentKeepalive || 25,
-      tenantId: gateway.tenantId,
     });
     setGatewayDialogOpen(true);
   };
