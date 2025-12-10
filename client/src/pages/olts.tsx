@@ -314,7 +314,13 @@ export default function OltsPage() {
                       <FormItem>
                         <FormLabel>Total PON Ports</FormLabel>
                         <FormControl>
-                          <Input type="number" {...field} value={field.value ?? 16} data-testid="input-olt-ports" />
+                          <Input 
+                            type="number" 
+                            {...field} 
+                            value={field.value ?? 16} 
+                            onChange={(e) => field.onChange(parseInt(e.target.value) || 16)}
+                            data-testid="input-olt-ports" 
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -358,7 +364,13 @@ export default function OltsPage() {
                     <FormItem>
                       <FormLabel>SNMP Port</FormLabel>
                       <FormControl>
-                        <Input type="number" {...field} value={field.value ?? 161} data-testid="input-olt-snmp-port" />
+                        <Input 
+                          type="number" 
+                          {...field} 
+                          value={field.value ?? 161} 
+                          onChange={(e) => field.onChange(parseInt(e.target.value) || 161)}
+                          data-testid="input-olt-snmp-port" 
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -399,7 +411,13 @@ export default function OltsPage() {
                       <FormItem>
                         <FormLabel>Telnet/SSH Port</FormLabel>
                         <FormControl>
-                          <Input type="number" {...field} value={field.value ?? 23} data-testid="input-olt-ssh-port" />
+                          <Input 
+                            type="number" 
+                            {...field} 
+                            value={field.value ?? 23} 
+                            onChange={(e) => field.onChange(parseInt(e.target.value) || 23)}
+                            data-testid="input-olt-ssh-port" 
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
