@@ -216,10 +216,30 @@ export class OltSnmpClient {
         this.oids.temperature,
       ];
 
+      console.log(`[SNMP] Querying standard OIDs: ${standardOids.join(", ")}`);
+      console.log(`[SNMP] Querying vendor OIDs (${this.vendor}): ${vendorOids.join(", ")}`);
+
       const [standardResults, vendorResults] = await Promise.all([
-        this.snmpClient.get(standardOids).catch(() => new Map()),
-        this.snmpClient.get(vendorOids).catch(() => new Map()),
+        this.snmpClient.get(standardOids).catch((err) => {
+          console.error(`[SNMP] Standard OID query failed:`, err.message);
+          return new Map();
+        }),
+        this.snmpClient.get(vendorOids).catch((err) => {
+          console.error(`[SNMP] Vendor OID query failed:`, err.message);
+          return new Map();
+        }),
       ]);
+
+      console.log(`[SNMP] Standard results: ${standardResults.size} values`);
+      console.log(`[SNMP] Vendor results: ${vendorResults.size} values`);
+      
+      // Log all retrieved values for debugging
+      standardResults.forEach((value, oid) => {
+        console.log(`[SNMP] Standard ${oid}: ${value}`);
+      });
+      vendorResults.forEach((value, oid) => {
+        console.log(`[SNMP] Vendor ${oid}: ${value}`);
+      });
 
       const data: OltSnmpData = {};
 
@@ -245,16 +265,23 @@ export class OltSnmpClient {
       // Parse vendor-specific data
       if (vendorResults.has(this.oids.cpuUsage)) {
         data.cpuUsage = Number(vendorResults.get(this.oids.cpuUsage));
+      } else {
+        console.log(`[SNMP] CPU usage OID ${this.oids.cpuUsage} not found in results`);
       }
       
       if (vendorResults.has(this.oids.memoryUsage)) {
         data.memoryUsage = Number(vendorResults.get(this.oids.memoryUsage));
+      } else {
+        console.log(`[SNMP] Memory usage OID ${this.oids.memoryUsage} not found in results`);
       }
       
       if (vendorResults.has(this.oids.temperature)) {
         data.temperature = Number(vendorResults.get(this.oids.temperature));
+      } else {
+        console.log(`[SNMP] Temperature OID ${this.oids.temperature} not found in results`);
       }
 
+      console.log(`[SNMP] Final data:`, JSON.stringify(data));
       return data;
     } catch (error) {
       console.error("SNMP getSystemInfo error:", error);
