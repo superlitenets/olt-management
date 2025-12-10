@@ -95,6 +95,7 @@ A comprehensive OLT (Optical Line Terminal) Management System for multi-vendor G
 - `POST /api/onus/:id/tr069/link` - Link ONU to TR-069 device
 - `GET /api/onus/:id/tr069/tasks` - Get TR-069 tasks for ONU
 - `POST /api/onus/:id/tr069/tasks` - Create TR-069 task for ONU
+- `POST /api/onus/:id/provision-tr069` - Provision ONU with TR-069/ACS settings from parent OLT
 
 ### TR-069/ACS
 - `GET /api/tr069/devices` - List managed devices
@@ -144,6 +145,7 @@ npm run db:studio  # Open Drizzle Studio
 - Consistent spacing and typography
 
 ## Recent Changes
+- December 2025: Added TR-069/ACS zero-touch provisioning - OLTs can store ACS settings and push them to ONUs via OMCI
 - December 2025: Added ONU-TR069 integration with device linking and quick actions (WiFi, VoIP, reboot)
 - December 2025: Added TR-069/ACS server with full CWMP support
 - December 2025: Implemented multi-tenant architecture
