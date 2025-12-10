@@ -9,6 +9,10 @@ import {
   insertServiceProfileSchema,
   insertAlertSchema,
   insertTenantSchema,
+  insertTr069DeviceSchema,
+  insertTr069TaskSchema,
+  insertTr069PresetSchema,
+  insertTr069FirmwareSchema,
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -403,6 +407,174 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching event logs:", error);
       res.status(500).json({ message: "Failed to fetch event logs" });
+    }
+  });
+
+  // TR-069 Device routes
+  app.get("/api/tr069/devices", isAuthenticated, async (req, res) => {
+    try {
+      const tenantId = req.query.tenantId as string | undefined;
+      const devices = await storage.getTr069Devices(tenantId);
+      res.json(devices);
+    } catch (error) {
+      console.error("Error fetching TR-069 devices:", error);
+      res.status(500).json({ message: "Failed to fetch TR-069 devices" });
+    }
+  });
+
+  app.get("/api/tr069/devices/:id", isAuthenticated, async (req, res) => {
+    try {
+      const device = await storage.getTr069Device(req.params.id);
+      if (!device) {
+        return res.status(404).json({ message: "Device not found" });
+      }
+      res.json(device);
+    } catch (error) {
+      console.error("Error fetching TR-069 device:", error);
+      res.status(500).json({ message: "Failed to fetch TR-069 device" });
+    }
+  });
+
+  app.delete("/api/tr069/devices/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteTr069Device(req.params.id);
+      broadcast("tr069Device:deleted", { id: req.params.id });
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting TR-069 device:", error);
+      res.status(500).json({ message: "Failed to delete TR-069 device" });
+    }
+  });
+
+  // TR-069 Task routes
+  app.get("/api/tr069/tasks", isAuthenticated, async (req, res) => {
+    try {
+      const deviceId = req.query.deviceId as string | undefined;
+      const tasks = await storage.getTr069Tasks(deviceId);
+      res.json(tasks);
+    } catch (error) {
+      console.error("Error fetching TR-069 tasks:", error);
+      res.status(500).json({ message: "Failed to fetch TR-069 tasks" });
+    }
+  });
+
+  app.post("/api/tr069/tasks", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertTr069TaskSchema.parse(req.body);
+      const task = await storage.createTr069Task(data);
+      broadcast("tr069Task:created", task);
+      res.status(201).json(task);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      console.error("Error creating TR-069 task:", error);
+      res.status(500).json({ message: "Failed to create TR-069 task" });
+    }
+  });
+
+  app.delete("/api/tr069/tasks/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteTr069Task(req.params.id);
+      broadcast("tr069Task:deleted", { id: req.params.id });
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting TR-069 task:", error);
+      res.status(500).json({ message: "Failed to delete TR-069 task" });
+    }
+  });
+
+  // TR-069 Preset routes
+  app.get("/api/tr069/presets", isAuthenticated, async (req, res) => {
+    try {
+      const tenantId = req.query.tenantId as string | undefined;
+      const presets = await storage.getTr069Presets(tenantId);
+      res.json(presets);
+    } catch (error) {
+      console.error("Error fetching TR-069 presets:", error);
+      res.status(500).json({ message: "Failed to fetch TR-069 presets" });
+    }
+  });
+
+  app.post("/api/tr069/presets", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertTr069PresetSchema.parse(req.body);
+      const preset = await storage.createTr069Preset(data);
+      broadcast("tr069Preset:created", preset);
+      res.status(201).json(preset);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      console.error("Error creating TR-069 preset:", error);
+      res.status(500).json({ message: "Failed to create TR-069 preset" });
+    }
+  });
+
+  app.put("/api/tr069/presets/:id", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertTr069PresetSchema.partial().parse(req.body);
+      const preset = await storage.updateTr069Preset(req.params.id, data);
+      if (!preset) {
+        return res.status(404).json({ message: "Preset not found" });
+      }
+      broadcast("tr069Preset:updated", preset);
+      res.json(preset);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      console.error("Error updating TR-069 preset:", error);
+      res.status(500).json({ message: "Failed to update TR-069 preset" });
+    }
+  });
+
+  app.delete("/api/tr069/presets/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteTr069Preset(req.params.id);
+      broadcast("tr069Preset:deleted", { id: req.params.id });
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting TR-069 preset:", error);
+      res.status(500).json({ message: "Failed to delete TR-069 preset" });
+    }
+  });
+
+  // TR-069 Firmware routes
+  app.get("/api/tr069/firmware", isAuthenticated, async (req, res) => {
+    try {
+      const tenantId = req.query.tenantId as string | undefined;
+      const firmware = await storage.getTr069FirmwareList(tenantId);
+      res.json(firmware);
+    } catch (error) {
+      console.error("Error fetching TR-069 firmware:", error);
+      res.status(500).json({ message: "Failed to fetch TR-069 firmware" });
+    }
+  });
+
+  app.post("/api/tr069/firmware", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertTr069FirmwareSchema.parse(req.body);
+      const firmware = await storage.createTr069Firmware(data);
+      broadcast("tr069Firmware:created", firmware);
+      res.status(201).json(firmware);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      console.error("Error creating TR-069 firmware:", error);
+      res.status(500).json({ message: "Failed to create TR-069 firmware" });
+    }
+  });
+
+  app.delete("/api/tr069/firmware/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteTr069Firmware(req.params.id);
+      broadcast("tr069Firmware:deleted", { id: req.params.id });
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting TR-069 firmware:", error);
+      res.status(500).json({ message: "Failed to delete TR-069 firmware" });
     }
   });
 
