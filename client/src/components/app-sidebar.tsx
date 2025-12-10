@@ -11,6 +11,7 @@ import {
   Activity,
   LogOut,
   ChevronDown,
+  Wifi,
 } from "lucide-react";
 import {
   Sidebar,
@@ -60,6 +61,11 @@ const mainNavItems = [
     icon: Package,
   },
   {
+    title: "TR-069/ACS",
+    url: "/tr069",
+    icon: Wifi,
+  },
+  {
     title: "Monitoring",
     url: "/monitoring",
     icon: Activity,
@@ -94,7 +100,7 @@ export function AppSidebar() {
   const { user } = useAuth();
 
   const { data: alerts } = useQuery<Alert[]>({
-    queryKey: ["/api/alerts", { status: "active" }],
+    queryKey: ["/api/alerts"],
   });
 
   const activeAlertCount = alerts?.filter(a => a.status === "active").length || 0;
