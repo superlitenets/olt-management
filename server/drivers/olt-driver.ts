@@ -1,4 +1,5 @@
 import type { Olt, Onu, ServiceProfile } from "@shared/schema";
+import { HuaweiTelnetClient, ZteTelnetClient, OltTelnetClient } from "./telnet-client";
 
 export interface OltDriverResult {
   success: boolean;
@@ -62,14 +63,65 @@ export abstract class OltDriver {
     };
   }
 
+  protected abstract createTelnetClient(): OltTelnetClient;
+
   protected async realExecution(commands: string[]): Promise<OltDriverResult> {
-    return {
-      success: false,
-      message: "Real SSH execution not implemented - requires SSH library",
-      commands,
-      error: "SSH_NOT_IMPLEMENTED",
-      timestamp: new Date(),
-    };
+    const client = this.createTelnetClient();
+    const outputs: string[] = [];
+    
+    try {
+      // Connect and authenticate
+      const connectResult = await client.connect();
+      if (!connectResult.success) {
+        return {
+          success: false,
+          message: `Failed to connect to OLT ${this.olt.name} (${this.olt.ipAddress})`,
+          commands,
+          error: connectResult.error,
+          timestamp: new Date(),
+        };
+      }
+      outputs.push(connectResult.output);
+
+      console.log(`[${this.getVendor()} OLT Driver] Executing ${commands.length} commands on ${this.olt.ipAddress}`);
+
+      // Execute each command
+      for (const command of commands) {
+        const result = await client.executeCommand(command);
+        outputs.push(`${command}: ${result.output}`);
+        
+        if (!result.success) {
+          await client.disconnect();
+          return {
+            success: false,
+            message: `Command failed: ${command}`,
+            commands,
+            error: result.error,
+            timestamp: new Date(),
+          };
+        }
+      }
+
+      // Disconnect
+      await client.disconnect();
+
+      return {
+        success: true,
+        message: `Successfully executed ${commands.length} commands on ${this.olt.name} (${this.olt.ipAddress})`,
+        commands,
+        timestamp: new Date(),
+      };
+    } catch (error) {
+      await client.disconnect();
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        success: false,
+        message: `Error executing commands on ${this.olt.name}`,
+        commands,
+        error: errorMessage,
+        timestamp: new Date(),
+      };
+    }
   }
 
   async provisionOnu(config: OnuProvisioningConfig): Promise<OltDriverResult> {
@@ -100,6 +152,18 @@ export abstract class OltDriver {
 export class HuaweiOltDriver extends OltDriver {
   getVendor(): string {
     return "Huawei";
+  }
+
+  protected createTelnetClient(): OltTelnetClient {
+    // Use sshPort if explicitly set, otherwise default to standard telnet port 23
+    // Note: sshPort defaults to 22 in schema, so we check if it's set to a non-SSH value
+    const port = (this.olt.sshPort && this.olt.sshPort !== 22) ? this.olt.sshPort : 23;
+    return new HuaweiTelnetClient(
+      this.olt.ipAddress,
+      port,
+      this.olt.sshUsername || "",
+      this.olt.sshPassword || ""
+    );
   }
 
   buildAddOnuCommands(config: OnuProvisioningConfig): string[] {
@@ -230,6 +294,18 @@ export class HuaweiOltDriver extends OltDriver {
 export class ZteOltDriver extends OltDriver {
   getVendor(): string {
     return "ZTE";
+  }
+
+  protected createTelnetClient(): OltTelnetClient {
+    // Use sshPort if explicitly set, otherwise default to standard telnet port 23
+    // Note: sshPort defaults to 22 in schema, so we check if it's set to a non-SSH value
+    const port = (this.olt.sshPort && this.olt.sshPort !== 22) ? this.olt.sshPort : 23;
+    return new ZteTelnetClient(
+      this.olt.ipAddress,
+      port,
+      this.olt.sshUsername || "",
+      this.olt.sshPassword || ""
+    );
   }
 
   buildAddOnuCommands(config: OnuProvisioningConfig): string[] {

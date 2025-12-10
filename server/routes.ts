@@ -406,7 +406,8 @@ export async function registerRoutes(
       
       // Use OLT driver to generate and execute TR-069 provisioning commands
       const { createOltDriver } = await import("./drivers/olt-driver");
-      const driver = createOltDriver(olt, true); // simulation mode
+      const simulationMode = process.env.OLT_SIMULATION_MODE !== "false";
+      const driver = createOltDriver(olt, simulationMode);
       
       const result = await driver.provisionTr069({
         onu,
@@ -470,7 +471,8 @@ export async function registerRoutes(
       
       // Use OLT driver to generate and execute provisioning commands
       const { createOltDriver } = await import("./drivers/olt-driver");
-      const driver = createOltDriver(olt, true); // simulation mode
+      const simulationMode = process.env.OLT_SIMULATION_MODE !== "false";
+      const driver = createOltDriver(olt, simulationMode);
       
       const result = await driver.provisionOnu({
         onu,
@@ -526,7 +528,8 @@ export async function registerRoutes(
       
       // Use OLT driver to generate and execute deprovisioning commands
       const { createOltDriver } = await import("./drivers/olt-driver");
-      const driver = createOltDriver(olt, true); // simulation mode
+      const simulationMode = process.env.OLT_SIMULATION_MODE !== "false";
+      const driver = createOltDriver(olt, simulationMode);
       
       const result = await driver.deprovisionOnu(onu);
       
@@ -574,7 +577,8 @@ export async function registerRoutes(
       
       // Use OLT driver to generate and execute reboot commands
       const { createOltDriver } = await import("./drivers/olt-driver");
-      const driver = createOltDriver(olt, true); // simulation mode
+      const simulationMode = process.env.OLT_SIMULATION_MODE !== "false";
+      const driver = createOltDriver(olt, simulationMode);
       
       const result = await driver.rebootOnu(onu);
       
@@ -623,6 +627,7 @@ export async function registerRoutes(
       }
       
       const { createOltDriver } = await import("./drivers/olt-driver");
+      // Always use simulation mode for preview - we only want to see the commands
       const driver = createOltDriver(olt, true);
       
       let commands: string[] = [];

@@ -1,4 +1,4 @@
-import Telnet from "telnet-client";
+import { Telnet } from "telnet-client";
 
 export interface TelnetConfig {
   host: string;
@@ -20,7 +20,7 @@ export interface TelnetResult {
 
 export class OltTelnetClient {
   private config: TelnetConfig;
-  private connection: Telnet | null = null;
+  private connection: InstanceType<typeof Telnet> | null = null;
 
   constructor(config: TelnetConfig) {
     this.config = {
@@ -45,6 +45,8 @@ export class OltTelnetClient {
         loginPrompt: this.config.loginPrompt,
         passwordPrompt: this.config.passwordPrompt,
         failedLoginMatch: this.config.failedLoginMatch,
+        username: this.config.username,
+        password: this.config.password,
         negotiationMandatory: false,
         ors: "\r\n",
         irs: "\n",
@@ -54,50 +56,15 @@ export class OltTelnetClient {
 
       await this.connection.connect(params);
 
-      console.log(`[Telnet] Connected to ${this.config.host}:${this.config.port}`);
+      console.log(`[Telnet] Connected and authenticated to ${this.config.host}:${this.config.port}`);
 
       return {
         success: true,
-        output: "Connected successfully",
+        output: "Connected and authenticated successfully",
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error(`[Telnet] Connection failed to ${this.config.host}:${this.config.port}: ${errorMessage}`);
-      return {
-        success: false,
-        output: "",
-        error: errorMessage,
-      };
-    }
-  }
-
-  async login(): Promise<TelnetResult> {
-    if (!this.connection) {
-      return {
-        success: false,
-        output: "",
-        error: "Not connected",
-      };
-    }
-
-    try {
-      const result = await this.connection.login({
-        username: this.config.username,
-        password: this.config.password,
-        loginPrompt: this.config.loginPrompt,
-        passwordPrompt: this.config.passwordPrompt,
-        failedLoginMatch: this.config.failedLoginMatch,
-      });
-
-      console.log(`[Telnet] Logged in as ${this.config.username}`);
-
-      return {
-        success: true,
-        output: result || "Login successful",
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error(`[Telnet] Login failed: ${errorMessage}`);
+      console.error(`[Telnet] Connection/auth failed to ${this.config.host}:${this.config.port}: ${errorMessage}`);
       return {
         success: false,
         output: "",
