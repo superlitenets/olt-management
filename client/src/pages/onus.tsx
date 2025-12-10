@@ -342,6 +342,37 @@ export default function OnusPage() {
     setSearchQuery("");
   };
 
+  // Bulk poll power levels for selected OLT
+  const pollPowerMutation = useMutation({
+    mutationFn: async (oltId: string) => {
+      return apiRequest("POST", `/api/olts/${oltId}/poll-onus`);
+    },
+    onSuccess: (_, oltId) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onus"] });
+      const oltName = olts?.find(o => o.id === oltId)?.name || "OLT";
+      toast({
+        title: "Power Levels Updated",
+        description: `Successfully polled ONUs on ${oltName}`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Poll Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handlePollPower = () => {
+    if (oltFilter && oltFilter !== "all") {
+      pollPowerMutation.mutate(oltFilter);
+    } else if (olts && olts.length > 0) {
+      // Poll all OLTs one by one
+      olts.forEach(olt => pollPowerMutation.mutate(olt.id));
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -351,10 +382,21 @@ export default function OnusPage() {
             View and manage Optical Network Units
           </p>
         </div>
-        <Button data-testid="button-discover-onus">
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Discover ONUs
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline"
+            onClick={handlePollPower}
+            disabled={pollPowerMutation.isPending || !olts?.length}
+            data-testid="button-poll-power"
+          >
+            <Activity className="h-4 w-4 mr-2" />
+            {pollPowerMutation.isPending ? "Polling..." : "Poll Power"}
+          </Button>
+          <Button data-testid="button-discover-onus">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Discover ONUs
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-4">
@@ -459,7 +501,7 @@ export default function OnusPage() {
                         <StatusBadge status={onu.status || "offline"} />
                       </TableCell>
                       <TableCell>
-                        <SignalIndicator rxPower={onu.rxPower} />
+                        <SignalIndicator rxPower={onu.rxPower} txPower={onu.txPower} />
                       </TableCell>
                       <TableCell>
                         <span className="font-mono text-sm">{onu.ipAddress || "-"}</span>

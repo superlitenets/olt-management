@@ -500,6 +500,89 @@ export async function registerRoutes(
     }
   });
 
+  // Bulk poll all ONUs on an OLT for power levels
+  app.post("/api/olts/:id/poll-onus", isAuthenticated, async (req, res) => {
+    try {
+      const olt = await storage.getOlt(req.params.id);
+      if (!olt) {
+        return res.status(404).json({ message: "OLT not found" });
+      }
+
+      console.log(`[poll-onus] Starting bulk poll on OLT: ${olt.name} (${olt.ipAddress})`);
+
+      const { createSnmpClient } = await import("./drivers/snmp-client");
+      const normalizedVendor = olt.vendor.toLowerCase() as "huawei" | "zte";
+      if (normalizedVendor !== "huawei" && normalizedVendor !== "zte") {
+        return res.status(400).json({ 
+          message: `Unsupported vendor: ${olt.vendor}. SNMP polling supports Huawei and ZTE only.` 
+        });
+      }
+
+      const snmpClient = createSnmpClient(
+        olt.ipAddress,
+        olt.snmpCommunity || "public",
+        normalizedVendor,
+        olt.snmpPort || 161
+      );
+
+      try {
+        // Get all ONUs for this OLT
+        const onus = await storage.getOnus(undefined, olt.id);
+        console.log(`[poll-onus] Polling ${onus.length} ONUs...`);
+
+        const results: { updated: number; failed: number; errors: string[] } = {
+          updated: 0,
+          failed: 0,
+          errors: [],
+        };
+
+        // Poll each ONU
+        for (const onu of onus) {
+          if (!onu.ponPort || !onu.onuId) {
+            continue;
+          }
+
+          try {
+            const opticalData = await snmpClient.getOnuOpticalPower(onu.ponPort, onu.onuId);
+            
+            const updateData: any = {};
+            if (opticalData.rxPower !== undefined) updateData.rxPower = opticalData.rxPower;
+            if (opticalData.txPower !== undefined) updateData.txPower = opticalData.txPower;
+            if (opticalData.distance !== undefined) updateData.distance = opticalData.distance;
+
+            if (Object.keys(updateData).length > 0) {
+              await storage.updateOnu(onu.id, updateData);
+              results.updated++;
+            }
+          } catch (pollError) {
+            results.failed++;
+            if (results.errors.length < 5) {
+              results.errors.push(`${onu.serialNumber}: ${pollError instanceof Error ? pollError.message : 'Unknown error'}`);
+            }
+          }
+        }
+
+        console.log(`[poll-onus] Complete: ${results.updated} updated, ${results.failed} failed`);
+
+        // Invalidate cache by broadcasting update
+        broadcast("onus:refreshed", { oltId: olt.id, updated: results.updated });
+
+        res.json({
+          message: "Bulk ONU poll complete",
+          summary: results,
+        });
+      } finally {
+        snmpClient.close();
+      }
+    } catch (error) {
+      console.error("[poll-onus] Error:", error);
+      res.status(500).json({ 
+        message: "Bulk ONU poll failed",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
   // SNMP poll ONU optical power
   app.post("/api/onus/:id/poll", isAuthenticated, async (req, res) => {
     try {

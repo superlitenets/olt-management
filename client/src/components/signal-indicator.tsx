@@ -3,11 +3,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 
 interface SignalIndicatorProps {
   rxPower: number | null | undefined;
+  txPower?: number | null | undefined;
   className?: string;
   showValue?: boolean;
 }
 
-export function SignalIndicator({ rxPower, className, showValue = true }: SignalIndicatorProps) {
+export function SignalIndicator({ rxPower, txPower, className, showValue = true }: SignalIndicatorProps) {
   const getSignalInfo = (power: number | null | undefined) => {
     if (power === null || power === undefined) {
       return { level: "unknown", color: "bg-gray-400", label: "Unknown", bars: 0 };
@@ -60,6 +61,9 @@ export function SignalIndicator({ rxPower, className, showValue = true }: Signal
         <p className="font-medium">{info.label} Signal</p>
         {rxPower !== null && rxPower !== undefined && (
           <p className="text-xs text-muted-foreground">RX Power: {rxPower.toFixed(2)} dBm</p>
+        )}
+        {txPower !== null && txPower !== undefined && (
+          <p className="text-xs text-muted-foreground">TX Power: {txPower.toFixed(2)} dBm</p>
         )}
       </TooltipContent>
     </Tooltip>
