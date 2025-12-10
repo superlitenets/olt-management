@@ -91,6 +91,12 @@ export const olts = pgTable("olts", {
   location: varchar("location", { length: 255 }),
   notes: text("notes"),
   lastPolled: timestamp("last_polled"),
+  // TR-069/ACS Zero-Touch Configuration
+  acsEnabled: boolean("acs_enabled").default(false),
+  acsUrl: varchar("acs_url", { length: 500 }),
+  acsUsername: varchar("acs_username", { length: 100 }),
+  acsPassword: varchar("acs_password", { length: 255 }),
+  acsPeriodicInformInterval: integer("acs_periodic_inform_interval").default(3600),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

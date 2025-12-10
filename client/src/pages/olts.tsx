@@ -28,6 +28,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
 import { StatusBadge } from "@/components/status-badge";
 import { VendorLogo } from "@/components/vendor-logo";
 import { OltCardSkeleton } from "@/components/loading-skeleton";
@@ -94,6 +96,11 @@ export default function OltsPage() {
       totalPorts: 16,
       location: "",
       notes: "",
+      acsEnabled: false,
+      acsUrl: "",
+      acsUsername: "",
+      acsPassword: "",
+      acsPeriodicInformInterval: 3600,
     },
   });
 
@@ -358,6 +365,127 @@ export default function OltsPage() {
                     </FormItem>
                   )}
                 />
+
+                <Separator className="my-4" />
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-sm font-medium">TR-069/ACS Zero-Touch Configuration</h4>
+                    <p className="text-xs text-muted-foreground">
+                      Configure TR-069 settings for automatic ONU provisioning via Huawei OMCI
+                    </p>
+                  </div>
+
+                  <FormField
+                    control={form.control}
+                    name="acsEnabled"
+                    render={({ field }) => (
+                      <FormItem className="flex items-center justify-between rounded-lg border p-3">
+                        <div className="space-y-0.5">
+                          <FormLabel>Enable ACS Auto-Configuration</FormLabel>
+                          <p className="text-xs text-muted-foreground">
+                            Automatically provision ONUs with TR-069/ACS settings
+                          </p>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            checked={field.value || false}
+                            onCheckedChange={field.onChange}
+                            data-testid="switch-acs-enabled"
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+
+                  {form.watch("acsEnabled") && (
+                    <>
+                      <FormField
+                        control={form.control}
+                        name="acsUrl"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>ACS URL</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="http://acs.example.com:7547/acs"
+                                {...field}
+                                value={field.value || ""}
+                                data-testid="input-acs-url"
+                              />
+                            </FormControl>
+                            <p className="text-xs text-muted-foreground">
+                              TR-069 Auto Configuration Server URL
+                            </p>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormField
+                          control={form.control}
+                          name="acsUsername"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>ACS Username</FormLabel>
+                              <FormControl>
+                                <Input
+                                  placeholder="acs_user"
+                                  {...field}
+                                  value={field.value || ""}
+                                  data-testid="input-acs-username"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="acsPassword"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>ACS Password</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="password"
+                                  placeholder="***"
+                                  {...field}
+                                  value={field.value || ""}
+                                  data-testid="input-acs-password"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      <FormField
+                        control={form.control}
+                        name="acsPeriodicInformInterval"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Periodic Inform Interval (seconds)</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                {...field}
+                                value={field.value || 3600}
+                                onChange={(e) => field.onChange(parseInt(e.target.value) || 3600)}
+                                data-testid="input-acs-interval"
+                              />
+                            </FormControl>
+                            <p className="text-xs text-muted-foreground">
+                              How often ONUs will contact the ACS server (default: 3600 seconds = 1 hour)
+                            </p>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </>
+                  )}
+                </div>
 
                 <FormField
                   control={form.control}
