@@ -424,9 +424,11 @@ export async function registerRoutes(
       try {
         const discoveredOnus = await snmpClient.discoverOnus();
         
-        // Get existing ONUs for this OLT
-        const existingOnus = await storage.getOnus(olt.id);
+        // Get existing ONUs for this OLT (pass undefined for tenantId to get all, filter by oltId)
+        const existingOnus = await storage.getOnus(undefined, olt.id);
         const existingSerials = new Set(existingOnus.map(o => o.serialNumber.toUpperCase()));
+        
+        console.log(`[discover-onus] Found ${existingOnus.length} existing ONUs for this OLT`);
         
         // Resolve tenant ID
         const tenantId = await resolveTenantId(req);
