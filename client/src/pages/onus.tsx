@@ -176,13 +176,14 @@ export default function OnusPage() {
 
   const provisionTr069Mutation = useMutation({
     mutationFn: async (onuId: string) => {
-      return apiRequest("POST", `/api/onus/${onuId}/provision-tr069`);
+      const res = await apiRequest("POST", `/api/onus/${onuId}/provision-tr069`);
+      return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/onus"] });
       toast({
-        title: "TR-069 Provisioning Started",
-        description: "The ONU is being configured with ACS settings from the OLT",
+        title: "TR-069 Provisioning Complete",
+        description: `${data.commands?.length || 0} commands sent to ${data.vendor || 'OLT'}`,
       });
     },
     onError: (error: Error) => {
@@ -204,6 +205,103 @@ export default function OnusPage() {
       });
     },
   });
+
+  const provisionOnuMutation = useMutation({
+    mutationFn: async (onuId: string) => {
+      const res = await apiRequest("POST", `/api/onus/${onuId}/provision`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onus"] });
+      toast({
+        title: "ONU Provisioned",
+        description: `${data.commands?.length || 0} commands sent to ${data.vendor || 'OLT'}`,
+      });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        window.location.href = "/api/login";
+        return;
+      }
+      toast({
+        title: "Error",
+        description: error.message || "Failed to provision ONU",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deprovisionOnuMutation = useMutation({
+    mutationFn: async (onuId: string) => {
+      const res = await apiRequest("POST", `/api/onus/${onuId}/deprovision`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onus"] });
+      toast({
+        title: "ONU Deprovisioned",
+        description: `${data.commands?.length || 0} commands sent to ${data.vendor || 'OLT'}`,
+      });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        window.location.href = "/api/login";
+        return;
+      }
+      toast({
+        title: "Error",
+        description: error.message || "Failed to deprovision ONU",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const rebootOnuMutation = useMutation({
+    mutationFn: async (onuId: string) => {
+      const res = await apiRequest("POST", `/api/onus/${onuId}/reboot`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onus"] });
+      toast({
+        title: "ONU Reboot Initiated",
+        description: `Reboot command sent to ${data.vendor || 'OLT'}`,
+      });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        window.location.href = "/api/login";
+        return;
+      }
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reboot ONU",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
+  const [previewCommands, setPreviewCommands] = useState<{ vendor: string; commands: string[]; action: string } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  const previewCommandsFn = async (onuId: string, action: string) => {
+    setPreviewLoading(true);
+    try {
+      const res = await apiRequest("POST", `/api/onus/${onuId}/preview-commands`, { action });
+      const response = await res.json() as { vendor: string; commands: string[]; action: string };
+      setPreviewCommands({ vendor: response.vendor, commands: response.commands, action });
+      setPreviewDialogOpen(true);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to preview commands",
+        variant: "destructive",
+      });
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
 
   const filteredOnus = onus?.filter((onu) => {
     const matchesSearch =
@@ -386,16 +484,18 @@ export default function OnusPage() {
                               <Eye className="h-4 w-4 mr-2" />
                               View Details
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <Settings className="h-4 w-4 mr-2" />
-                              Configure
+                            <DropdownMenuItem onClick={() => previewCommandsFn(onu.id, "provision")}>
+                              <FileText className="h-4 w-4 mr-2" />
+                              Preview CLI Commands
                             </DropdownMenuItem>
+                            <DropdownMenuSeparator />
                             <DropdownMenuItem
-                              onClick={() => restartMutation.mutate(onu.id)}
-                              disabled={restartMutation.isPending}
+                              onClick={() => provisionOnuMutation.mutate(onu.id)}
+                              disabled={provisionOnuMutation.isPending}
+                              data-testid={`button-provision-${onu.id}`}
                             >
-                              <RefreshCw className="h-4 w-4 mr-2" />
-                              Restart
+                              <Download className="h-4 w-4 mr-2" />
+                              Provision Service
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => provisionTr069Mutation.mutate(onu.id)}
@@ -405,10 +505,23 @@ export default function OnusPage() {
                               <Zap className="h-4 w-4 mr-2" />
                               Provision TR-069
                             </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => rebootOnuMutation.mutate(onu.id)}
+                              disabled={rebootOnuMutation.isPending}
+                              data-testid={`button-reboot-${onu.id}`}
+                            >
+                              <RotateCcw className="h-4 w-4 mr-2" />
+                              Reboot ONU
+                            </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => deprovisionOnuMutation.mutate(onu.id)}
+                              disabled={deprovisionOnuMutation.isPending}
+                              className="text-destructive"
+                              data-testid={`button-deprovision-${onu.id}`}
+                            >
                               <Power className="h-4 w-4 mr-2" />
-                              {onu.status === "offline" ? "Enable" : "Disable"}
+                              Deprovision
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -754,6 +867,49 @@ export default function OnusPage() {
               </div>
             </Tabs>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              CLI Commands Preview
+            </DialogTitle>
+            <DialogDescription>
+              {previewCommands?.vendor && (
+                <span className="flex items-center gap-2">
+                  <Badge variant="outline">{previewCommands.vendor.toUpperCase()}</Badge>
+                  <span className="capitalize">{previewCommands.action} Commands</span>
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          {previewCommands && (
+            <div className="space-y-4">
+              <div className="bg-muted rounded-md p-4 font-mono text-sm overflow-x-auto">
+                {previewCommands.commands.map((cmd, idx) => (
+                  <div key={idx} className="py-1 border-b border-border/50 last:border-b-0">
+                    <span className="text-muted-foreground mr-3">{idx + 1}.</span>
+                    <span>{cmd}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Activity className="h-4 w-4" />
+                <span>{previewCommands.commands.length} commands would be sent to the OLT</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Note: This is running in simulation mode. In production, these commands would be sent to the OLT via SSH.
+              </p>
+            </div>
+          )}
+          <div className="flex justify-end gap-3 pt-4">
+            <Button variant="outline" onClick={() => setPreviewDialogOpen(false)}>
+              Close
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
