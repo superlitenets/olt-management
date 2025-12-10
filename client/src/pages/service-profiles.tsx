@@ -55,10 +55,19 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { insertServiceProfileSchema, type ServiceProfile, type InsertServiceProfile } from "@shared/schema";
 
+const optionalVlan = z.preprocess(
+  (val) => (val === "" || val === undefined || val === null ? undefined : Number(val)),
+  z.number().min(1).max(4094).optional()
+);
+
 const createProfileFormSchema = insertServiceProfileSchema.omit({ tenantId: true }).extend({
   name: z.string().min(1, "Name is required"),
   downloadSpeed: z.coerce.number().min(1, "Download speed is required"),
   uploadSpeed: z.coerce.number().min(1, "Upload speed is required"),
+  qosPriority: z.coerce.number().min(0).max(7).optional(),
+  internetVlan: optionalVlan,
+  iptvVlan: optionalVlan,
+  voipVlan: optionalVlan,
 });
 
 type CreateProfileForm = z.infer<typeof createProfileFormSchema>;
@@ -84,6 +93,9 @@ export default function ServiceProfilesPage() {
       voipEnabled: false,
       qosPriority: 0,
       isDefault: false,
+      internetVlan: undefined,
+      iptvVlan: undefined,
+      voipVlan: undefined,
     },
   });
 
