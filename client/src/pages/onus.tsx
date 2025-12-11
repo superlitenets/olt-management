@@ -718,7 +718,9 @@ export default function OnusPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span className="text-sm">{onu.name || "-"}</span>
+                        <span className="text-sm" title={onu.name || ""}>
+                          {onu.name ? (onu.name.length > 9 ? onu.name.slice(0, 9) + "..." : onu.name) : "-"}
+                        </span>
                       </TableCell>
                       <TableCell>
                         <div className="text-sm">
