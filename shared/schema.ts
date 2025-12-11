@@ -193,6 +193,38 @@ export const eventLogs = pgTable("event_logs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// ONU event type enum
+export const onuEventTypeEnum = pgEnum("onu_event_type", [
+  "online",
+  "offline", 
+  "los",
+  "power_fail",
+  "fiber_cut",
+  "signal_degraded",
+  "provisioned",
+  "deprovisioned",
+  "rebooted"
+]);
+
+// ONU Events table for tracking status changes (SmartOLT-style event history)
+export const onuEvents = pgTable("onu_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  onuId: varchar("onu_id").references(() => onus.id).notNull(),
+  oltId: varchar("olt_id").references(() => olts.id).notNull(),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  eventType: onuEventTypeEnum("event_type").notNull(),
+  previousStatus: varchar("previous_status", { length: 50 }),
+  newStatus: varchar("new_status", { length: 50 }),
+  rxPower: real("rx_power"),
+  txPower: real("tx_power"),
+  distance: real("distance"),
+  details: text("details"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_onu_events_onu_id").on(table.onuId),
+  index("idx_onu_events_created_at").on(table.createdAt),
+]);
+
 // Relations
 export const tenantsRelations = relations(tenants, ({ many }) => ({
   users: many(users),
@@ -281,6 +313,21 @@ export const eventLogsRelations = relations(eventLogs, ({ one }) => ({
   }),
 }));
 
+export const onuEventsRelations = relations(onuEvents, ({ one }) => ({
+  onu: one(onus, {
+    fields: [onuEvents.onuId],
+    references: [onus.id],
+  }),
+  olt: one(olts, {
+    fields: [onuEvents.oltId],
+    references: [olts.id],
+  }),
+  tenant: one(tenants, {
+    fields: [onuEvents.tenantId],
+    references: [tenants.id],
+  }),
+}));
+
 // Insert schemas
 export const insertTenantSchema = createInsertSchema(tenants).omit({
   id: true,
@@ -330,6 +377,11 @@ export const insertAlertSchema = createInsertSchema(alerts).omit({
 });
 
 export const insertEventLogSchema = createInsertSchema(eventLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertOnuEventSchema = createInsertSchema(onuEvents).omit({
   id: true,
   createdAt: true,
 });
@@ -601,6 +653,9 @@ export type InsertAlert = z.infer<typeof insertAlertSchema>;
 
 export type EventLog = typeof eventLogs.$inferSelect;
 export type InsertEventLog = z.infer<typeof insertEventLogSchema>;
+
+export type OnuEvent = typeof onuEvents.$inferSelect;
+export type InsertOnuEvent = z.infer<typeof insertOnuEventSchema>;
 
 export type Tr069Device = typeof tr069Devices.$inferSelect;
 export type InsertTr069Device = z.infer<typeof insertTr069DeviceSchema>;

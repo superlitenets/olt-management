@@ -6,6 +6,7 @@ import {
   serviceProfiles,
   alerts,
   eventLogs,
+  onuEvents,
   tr069Devices,
   tr069Tasks,
   tr069Presets,
@@ -27,6 +28,8 @@ import {
   type InsertAlert,
   type EventLog,
   type InsertEventLog,
+  type OnuEvent,
+  type InsertOnuEvent,
   type Tr069Device,
   type InsertTr069Device,
   type Tr069Task,
@@ -41,7 +44,7 @@ import {
   type InsertVpnTunnel,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql, count, avg } from "drizzle-orm";
 
 export interface IStorage {
   // User operations (required for Replit Auth and Local Auth)
@@ -134,6 +137,24 @@ export interface IStorage {
   createVpnTunnel(tunnel: InsertVpnTunnel): Promise<VpnTunnel>;
   updateVpnTunnel(id: string, tunnel: Partial<VpnTunnel>): Promise<VpnTunnel | undefined>;
   deleteVpnTunnel(id: string): Promise<boolean>;
+  
+  // ONU Event operations (SmartOLT-style event history)
+  getOnuEvents(onuId: string, limit?: number): Promise<OnuEvent[]>;
+  getRecentOnuEvents(tenantId?: string, limit?: number): Promise<OnuEvent[]>;
+  createOnuEvent(event: InsertOnuEvent): Promise<OnuEvent>;
+  
+  // Dashboard stats
+  getDashboardStats(tenantId?: string): Promise<{
+    totalOlts: number;
+    onlineOlts: number;
+    totalOnus: number;
+    onlineOnus: number;
+    offlineOnus: number;
+    losOnus: number;
+    activeAlerts: number;
+    criticalAlerts: number;
+    avgRxPower: number | null;
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -606,6 +627,87 @@ export class DatabaseStorage implements IStorage {
   async deleteVpnTunnel(id: string): Promise<boolean> {
     await db.delete(vpnTunnels).where(eq(vpnTunnels.id, id));
     return true;
+  }
+
+  // ONU Event operations (SmartOLT-style event history)
+  async getOnuEvents(onuId: string, limit: number = 50): Promise<OnuEvent[]> {
+    return db.select().from(onuEvents)
+      .where(eq(onuEvents.onuId, onuId))
+      .orderBy(desc(onuEvents.createdAt))
+      .limit(limit);
+  }
+
+  async getRecentOnuEvents(tenantId?: string, limit: number = 100): Promise<OnuEvent[]> {
+    if (tenantId) {
+      return db.select().from(onuEvents)
+        .where(eq(onuEvents.tenantId, tenantId))
+        .orderBy(desc(onuEvents.createdAt))
+        .limit(limit);
+    }
+    return db.select().from(onuEvents)
+      .orderBy(desc(onuEvents.createdAt))
+      .limit(limit);
+  }
+
+  async createOnuEvent(event: InsertOnuEvent): Promise<OnuEvent> {
+    const [created] = await db.insert(onuEvents).values(event).returning();
+    return created;
+  }
+
+  // Dashboard stats
+  async getDashboardStats(tenantId?: string): Promise<{
+    totalOlts: number;
+    onlineOlts: number;
+    totalOnus: number;
+    onlineOnus: number;
+    offlineOnus: number;
+    losOnus: number;
+    activeAlerts: number;
+    criticalAlerts: number;
+    avgRxPower: number | null;
+  }> {
+    // Get OLT stats
+    const oltList = tenantId 
+      ? await db.select().from(olts).where(eq(olts.tenantId, tenantId))
+      : await db.select().from(olts);
+    const totalOlts = oltList.length;
+    const onlineOlts = oltList.filter(o => o.status === "online").length;
+
+    // Get ONU stats
+    const onuList = tenantId
+      ? await db.select().from(onus).where(eq(onus.tenantId, tenantId))
+      : await db.select().from(onus);
+    const totalOnus = onuList.length;
+    const onlineOnus = onuList.filter(o => o.status === "online").length;
+    const offlineOnus = onuList.filter(o => o.status === "offline").length;
+    const losOnus = onuList.filter(o => o.status === "los").length;
+
+    // Calculate average RX power (only from online ONUs with valid readings)
+    const validRxPowers = onuList
+      .filter(o => o.rxPower !== null && o.rxPower !== undefined && o.rxPower > -50 && o.rxPower < 0)
+      .map(o => o.rxPower as number);
+    const avgRxPower = validRxPowers.length > 0 
+      ? validRxPowers.reduce((sum, p) => sum + p, 0) / validRxPowers.length
+      : null;
+
+    // Get alert stats
+    const alertList = tenantId
+      ? await db.select().from(alerts).where(and(eq(alerts.tenantId, tenantId), eq(alerts.status, "active")))
+      : await db.select().from(alerts).where(eq(alerts.status, "active"));
+    const activeAlerts = alertList.length;
+    const criticalAlerts = alertList.filter(a => a.severity === "critical").length;
+
+    return {
+      totalOlts,
+      onlineOlts,
+      totalOnus,
+      onlineOnus,
+      offlineOnus,
+      losOnus,
+      activeAlerts,
+      criticalAlerts,
+      avgRxPower,
+    };
   }
 }
 

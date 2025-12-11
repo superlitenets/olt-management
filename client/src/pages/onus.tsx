@@ -34,6 +34,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/status-badge";
 import { SignalIndicator } from "@/components/signal-indicator";
 import { TableSkeleton } from "@/components/loading-skeleton";
@@ -62,6 +63,9 @@ import {
   RotateCcw,
   FileText,
   Zap,
+  Trash2,
+  CheckSquare,
+  Square,
 } from "lucide-react";
 import type { Onu, Olt, ServiceProfile, Tr069Device } from "@shared/schema";
 
@@ -72,6 +76,7 @@ export default function OnusPage() {
   const [authTab, setAuthTab] = useState<"all" | "authorized" | "unauthorized">("all");
   const [selectedOnu, setSelectedOnu] = useState<Onu | null>(null);
   const [activeTab, setActiveTab] = useState("details");
+  const [selectedOnuIds, setSelectedOnuIds] = useState<Set<string>>(new Set());
   const { toast } = useToast();
 
   const { data: onus, isLoading } = useQuery<Onu[]>({
@@ -282,6 +287,96 @@ export default function OnusPage() {
     },
   });
 
+  // Batch operations
+  const batchPollMutation = useMutation({
+    mutationFn: async (onuIds: string[]) => {
+      const res = await apiRequest("POST", "/api/onus/batch/poll", { onuIds });
+      return res.json();
+    },
+    onSuccess: (data: { successCount: number; totalCount: number }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onus"] });
+      setSelectedOnuIds(new Set());
+      toast({
+        title: "Batch Poll Complete",
+        description: `Successfully polled ${data.successCount}/${data.totalCount} ONUs`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Batch Poll Failed",
+        description: error.message || "Failed to poll ONUs",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const batchRebootMutation = useMutation({
+    mutationFn: async (onuIds: string[]) => {
+      const res = await apiRequest("POST", "/api/onus/batch/reboot", { onuIds });
+      return res.json();
+    },
+    onSuccess: (data: { successCount: number; totalCount: number }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onus"] });
+      setSelectedOnuIds(new Set());
+      toast({
+        title: "Batch Reboot Complete",
+        description: `Successfully rebooted ${data.successCount}/${data.totalCount} ONUs`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Batch Reboot Failed",
+        description: error.message || "Failed to reboot ONUs",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const batchDeleteMutation = useMutation({
+    mutationFn: async (onuIds: string[]) => {
+      const res = await apiRequest("POST", "/api/onus/batch/delete", { onuIds });
+      return res.json();
+    },
+    onSuccess: (data: { successCount: number; totalCount: number }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onus"] });
+      setSelectedOnuIds(new Set());
+      toast({
+        title: "Batch Delete Complete",
+        description: `Successfully deleted ${data.successCount}/${data.totalCount} ONUs`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Batch Delete Failed",
+        description: error.message || "Failed to delete ONUs",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Selection helpers
+  const toggleOnuSelection = (onuId: string) => {
+    const newSelection = new Set(selectedOnuIds);
+    if (newSelection.has(onuId)) {
+      newSelection.delete(onuId);
+    } else {
+      newSelection.add(onuId);
+    }
+    setSelectedOnuIds(newSelection);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedOnuIds.size === filteredOnus?.length) {
+      setSelectedOnuIds(new Set());
+    } else {
+      setSelectedOnuIds(new Set(filteredOnus?.map(o => o.id) || []));
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedOnuIds(new Set());
+  };
+
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
   const [previewCommands, setPreviewCommands] = useState<{ vendor: string; commands: string[]; action: string } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -476,6 +571,65 @@ export default function OnusPage() {
         </div>
       </div>
 
+      {/* Batch Actions Toolbar */}
+      {selectedOnuIds.size > 0 && (
+        <Card className="bg-primary/5 border-primary/20">
+          <CardContent className="py-3 px-4">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <CheckSquare className="h-5 w-5 text-primary" />
+                <span className="font-medium">{selectedOnuIds.size} ONU{selectedOnuIds.size > 1 ? 's' : ''} selected</span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => batchPollMutation.mutate(Array.from(selectedOnuIds))}
+                  disabled={batchPollMutation.isPending}
+                  data-testid="button-batch-poll"
+                >
+                  <Activity className="h-4 w-4 mr-2" />
+                  {batchPollMutation.isPending ? "Polling..." : "Poll Selected"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => batchRebootMutation.mutate(Array.from(selectedOnuIds))}
+                  disabled={batchRebootMutation.isPending}
+                  data-testid="button-batch-reboot"
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  {batchRebootMutation.isPending ? "Rebooting..." : "Reboot Selected"}
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => {
+                    if (confirm(`Are you sure you want to delete ${selectedOnuIds.size} ONUs? This action cannot be undone.`)) {
+                      batchDeleteMutation.mutate(Array.from(selectedOnuIds));
+                    }
+                  }}
+                  disabled={batchDeleteMutation.isPending}
+                  data-testid="button-batch-delete"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  {batchDeleteMutation.isPending ? "Deleting..." : "Delete Selected"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearSelection}
+                  data-testid="button-clear-selection"
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  Clear Selection
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
@@ -485,6 +639,14 @@ export default function OnusPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={filteredOnus?.length > 0 && selectedOnuIds.size === filteredOnus.length}
+                        onCheckedChange={toggleSelectAll}
+                        aria-label="Select all"
+                        data-testid="checkbox-select-all"
+                      />
+                    </TableHead>
                     <TableHead>Serial Number</TableHead>
                     <TableHead>Description</TableHead>
                     <TableHead>OLT</TableHead>
@@ -498,7 +660,15 @@ export default function OnusPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredOnus.map((onu) => (
-                    <TableRow key={onu.id} data-testid={`onu-row-${onu.id}`}>
+                    <TableRow key={onu.id} data-testid={`onu-row-${onu.id}`} className={selectedOnuIds.has(onu.id) ? "bg-primary/5" : ""}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedOnuIds.has(onu.id)}
+                          onCheckedChange={() => toggleOnuSelection(onu.id)}
+                          aria-label={`Select ${onu.serialNumber}`}
+                          data-testid={`checkbox-onu-${onu.id}`}
+                        />
+                      </TableCell>
                       <TableCell>
                         <div>
                           <span className="font-mono text-sm">{onu.serialNumber}</span>

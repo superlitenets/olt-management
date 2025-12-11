@@ -87,6 +87,43 @@ export async function registerRoutes(
     }
   });
 
+  // Dashboard stats endpoint
+  app.get("/api/dashboard/stats", isAuthenticated, async (req: any, res) => {
+    try {
+      const tenantId = req.query.tenantId as string | undefined;
+      const stats = await storage.getDashboardStats(tenantId);
+      res.json(stats);
+    } catch (error) {
+      console.error("Error fetching dashboard stats:", error);
+      res.status(500).json({ message: "Failed to fetch dashboard stats" });
+    }
+  });
+
+  // Recent ONU events for dashboard
+  app.get("/api/onu-events/recent", isAuthenticated, async (req: any, res) => {
+    try {
+      const tenantId = req.query.tenantId as string | undefined;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const events = await storage.getRecentOnuEvents(tenantId, limit);
+      res.json(events);
+    } catch (error) {
+      console.error("Error fetching recent ONU events:", error);
+      res.status(500).json({ message: "Failed to fetch ONU events" });
+    }
+  });
+
+  // ONU events for specific ONU
+  app.get("/api/onus/:id/events", isAuthenticated, async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const events = await storage.getOnuEvents(req.params.id, limit);
+      res.json(events);
+    } catch (error) {
+      console.error("Error fetching ONU events:", error);
+      res.status(500).json({ message: "Failed to fetch ONU events" });
+    }
+  });
+
   // Tenant routes
   app.get("/api/tenants", isAuthenticated, async (req, res) => {
     try {
@@ -811,6 +848,160 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting ONU:", error);
       res.status(500).json({ message: "Failed to delete ONU" });
+    }
+  });
+
+  // Batch ONU operations (SmartOLT-style)
+  app.post("/api/onus/batch/poll", isAuthenticated, async (req, res) => {
+    try {
+      const { onuIds } = req.body;
+      if (!Array.isArray(onuIds) || onuIds.length === 0) {
+        return res.status(400).json({ message: "onuIds array is required" });
+      }
+
+      const results: { id: string; success: boolean; error?: string }[] = [];
+      
+      for (const onuId of onuIds) {
+        try {
+          const onu = await storage.getOnu(onuId);
+          if (!onu || !onu.oltId) {
+            results.push({ id: onuId, success: false, error: "ONU not found or not linked to OLT" });
+            continue;
+          }
+          
+          const olt = await storage.getOlt(onu.oltId);
+          if (!olt) {
+            results.push({ id: onuId, success: false, error: "Parent OLT not found" });
+            continue;
+          }
+
+          // Poll optical power via SNMP
+          const { createSnmpClient } = await import("./drivers/snmp-client");
+          const normalizedVendor = olt.vendor.toLowerCase() as "huawei" | "zte";
+          if (normalizedVendor !== "huawei" && normalizedVendor !== "zte") {
+            results.push({ id: onuId, success: false, error: "Unsupported vendor" });
+            continue;
+          }
+
+          const snmpClient = createSnmpClient(
+            olt.ipAddress,
+            olt.snmpCommunity || "public",
+            normalizedVendor,
+            olt.snmpPort || 161
+          );
+
+          try {
+            const ponPort = onu.ponPort || 0;
+            const onuIdNum = onu.onuId || 1;
+            const data = await snmpClient.pollOnuOpticalPower(ponPort, onuIdNum);
+
+            await storage.updateOnu(onuId, {
+              status: data.status || onu.status,
+              rxPower: data.rxPower ?? onu.rxPower,
+              txPower: data.txPower ?? onu.txPower,
+              distance: data.distance ?? onu.distance,
+              lastSeen: new Date(),
+            });
+
+            results.push({ id: onuId, success: true });
+          } finally {
+            snmpClient.close();
+          }
+        } catch (e) {
+          results.push({ id: onuId, success: false, error: e instanceof Error ? e.message : "Unknown error" });
+        }
+      }
+
+      const successCount = results.filter(r => r.success).length;
+      broadcast("onus:batchPolled", { count: successCount });
+      res.json({ results, successCount, totalCount: onuIds.length });
+    } catch (error) {
+      console.error("Batch poll error:", error);
+      res.status(500).json({ message: "Failed to batch poll ONUs" });
+    }
+  });
+
+  app.post("/api/onus/batch/reboot", isAuthenticated, async (req, res) => {
+    try {
+      const { onuIds } = req.body;
+      if (!Array.isArray(onuIds) || onuIds.length === 0) {
+        return res.status(400).json({ message: "onuIds array is required" });
+      }
+
+      const results: { id: string; success: boolean; error?: string }[] = [];
+      const simulationMode = process.env.OLT_SIMULATION_MODE !== "false";
+
+      for (const onuId of onuIds) {
+        try {
+          const onu = await storage.getOnu(onuId);
+          if (!onu || !onu.oltId) {
+            results.push({ id: onuId, success: false, error: "ONU not found or not linked to OLT" });
+            continue;
+          }
+
+          const olt = await storage.getOlt(onu.oltId);
+          if (!olt) {
+            results.push({ id: onuId, success: false, error: "Parent OLT not found" });
+            continue;
+          }
+
+          const { createOltDriver } = await import("./drivers/olt-driver");
+          const driver = createOltDriver(olt, simulationMode);
+          const result = await driver.rebootOnu(onu);
+
+          if (result.success) {
+            // Record reboot event
+            await storage.createOnuEvent({
+              onuId: onu.id,
+              oltId: olt.id,
+              tenantId: onu.tenantId,
+              eventType: "rebooted",
+              previousStatus: onu.status || "unknown",
+              newStatus: onu.status || "unknown",
+              details: `Batch reboot initiated`,
+            });
+          }
+
+          results.push({ id: onuId, success: result.success, error: result.success ? undefined : result.message });
+        } catch (e) {
+          results.push({ id: onuId, success: false, error: e instanceof Error ? e.message : "Unknown error" });
+        }
+      }
+
+      const successCount = results.filter(r => r.success).length;
+      broadcast("onus:batchRebooted", { count: successCount });
+      res.json({ results, successCount, totalCount: onuIds.length });
+    } catch (error) {
+      console.error("Batch reboot error:", error);
+      res.status(500).json({ message: "Failed to batch reboot ONUs" });
+    }
+  });
+
+  app.post("/api/onus/batch/delete", isAuthenticated, async (req, res) => {
+    try {
+      const { onuIds } = req.body;
+      if (!Array.isArray(onuIds) || onuIds.length === 0) {
+        return res.status(400).json({ message: "onuIds array is required" });
+      }
+
+      const results: { id: string; success: boolean; error?: string }[] = [];
+
+      for (const onuId of onuIds) {
+        try {
+          await storage.deleteOnu(onuId);
+          results.push({ id: onuId, success: true });
+        } catch (e) {
+          results.push({ id: onuId, success: false, error: e instanceof Error ? e.message : "Unknown error" });
+        }
+      }
+
+      const successCount = results.filter(r => r.success).length;
+      broadcast("onus:batchDeleted", { count: successCount });
+      queryClient.invalidateQueries({ queryKey: ["/api/onus"] });
+      res.json({ results, successCount, totalCount: onuIds.length });
+    } catch (error) {
+      console.error("Batch delete error:", error);
+      res.status(500).json({ message: "Failed to batch delete ONUs" });
     }
   });
 
