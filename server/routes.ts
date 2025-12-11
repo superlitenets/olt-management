@@ -699,6 +699,158 @@ export async function registerRoutes(
     }
   });
 
+  // Create VLAN on OLT via CLI
+  app.post("/api/olts/:id/vlans", isAuthenticated, async (req, res) => {
+    try {
+      const olt = await storage.getOlt(req.params.id);
+      if (!olt) {
+        return res.status(404).json({ message: "OLT not found" });
+      }
+
+      const vlanSchema = z.object({
+        vlanId: z.number().int().min(1).max(4094),
+        name: z.string().max(32).optional(),
+        description: z.string().max(64).optional(),
+      });
+
+      const vlanConfig = vlanSchema.parse(req.body);
+
+      const { createOltDriver } = await import("./drivers/olt-driver");
+      const driver = createOltDriver(olt, false);
+      const result = await driver.createVlan(vlanConfig);
+
+      if (result.success) {
+        res.json({ 
+          success: true, 
+          message: `VLAN ${vlanConfig.vlanId} created successfully`,
+          commands: result.commands 
+        });
+      } else {
+        res.status(500).json({ 
+          success: false, 
+          message: result.message,
+          error: result.error 
+        });
+      }
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid VLAN data", errors: error.errors });
+      }
+      console.error("Error creating VLAN:", error);
+      res.status(500).json({ 
+        message: "Failed to create VLAN",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  // Delete VLAN from OLT via CLI
+  app.delete("/api/olts/:id/vlans/:vlanId", isAuthenticated, async (req, res) => {
+    try {
+      const olt = await storage.getOlt(req.params.id);
+      if (!olt) {
+        return res.status(404).json({ message: "OLT not found" });
+      }
+
+      const vlanId = parseInt(req.params.vlanId, 10);
+      if (isNaN(vlanId) || vlanId < 1 || vlanId > 4094) {
+        return res.status(400).json({ message: "Invalid VLAN ID" });
+      }
+
+      const { createOltDriver } = await import("./drivers/olt-driver");
+      const driver = createOltDriver(olt, false);
+      const result = await driver.deleteVlan(vlanId);
+
+      if (result.success) {
+        res.json({ 
+          success: true, 
+          message: `VLAN ${vlanId} deleted successfully`,
+          commands: result.commands 
+        });
+      } else {
+        res.status(500).json({ 
+          success: false, 
+          message: result.message,
+          error: result.error 
+        });
+      }
+    } catch (error) {
+      console.error("Error deleting VLAN:", error);
+      res.status(500).json({ 
+        message: "Failed to delete VLAN",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  // Save OLT configuration
+  app.post("/api/olts/:id/save-config", isAuthenticated, async (req, res) => {
+    try {
+      const olt = await storage.getOlt(req.params.id);
+      if (!olt) {
+        return res.status(404).json({ message: "OLT not found" });
+      }
+
+      const { createOltDriver } = await import("./drivers/olt-driver");
+      const driver = createOltDriver(olt, false);
+      const result = await driver.saveConfig();
+
+      if (result.success) {
+        res.json({ 
+          success: true, 
+          message: "Configuration saved successfully",
+          commands: result.commands 
+        });
+      } else {
+        res.status(500).json({ 
+          success: false, 
+          message: result.message,
+          error: result.error 
+        });
+      }
+    } catch (error) {
+      console.error("Error saving config:", error);
+      res.status(500).json({ 
+        message: "Failed to save configuration",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  // Update OLT TR-069/ACS settings
+  app.patch("/api/olts/:id/acs-settings", isAuthenticated, async (req, res) => {
+    try {
+      const acsSchema = z.object({
+        acsEnabled: z.boolean().optional(),
+        acsUrl: z.string().url().max(500).optional().nullable(),
+        acsUsername: z.string().max(100).optional().nullable(),
+        acsPassword: z.string().max(255).optional().nullable(),
+        acsPeriodicInformInterval: z.number().int().min(60).max(86400).optional(),
+      });
+
+      const validatedData = acsSchema.parse(req.body);
+      
+      const olt = await storage.updateOlt(req.params.id, validatedData);
+      if (!olt) {
+        return res.status(404).json({ message: "OLT not found" });
+      }
+      
+      const { acsPassword, sshPassword, snmpWriteCommunity, ...safeOlt } = olt;
+      res.json({ 
+        ...safeOlt, 
+        hasAcsPassword: !!acsPassword,
+        hasSshPassword: !!sshPassword,
+        hasSnmpWriteCommunity: !!snmpWriteCommunity 
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      console.error("Error updating ACS settings:", error);
+      res.status(500).json({ message: "Failed to update ACS settings" });
+    }
+  });
+
   // Bulk poll all ONUs on an OLT for power levels
   app.post("/api/olts/:id/poll-onus", isAuthenticated, async (req, res) => {
     try {

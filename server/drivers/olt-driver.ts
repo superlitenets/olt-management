@@ -27,6 +27,12 @@ export interface Tr069ProvisioningConfig {
   periodicInformInterval?: number;
 }
 
+export interface VlanConfig {
+  vlanId: number;
+  name?: string;
+  description?: string;
+}
+
 export abstract class OltDriver {
   protected olt: Olt;
   protected simulationMode: boolean;
@@ -43,6 +49,9 @@ export abstract class OltDriver {
   abstract buildTr069Commands(config: Tr069ProvisioningConfig): string[];
   abstract buildVlanCommands(config: OnuProvisioningConfig): string[];
   abstract buildRebootOnuCommands(onu: Onu): string[];
+  abstract buildCreateVlanCommands(vlan: VlanConfig): string[];
+  abstract buildDeleteVlanCommands(vlanId: number): string[];
+  abstract buildSaveConfigCommands(): string[];
 
   async executeCommands(commands: string[]): Promise<OltDriverResult> {
     if (this.simulationMode) {
@@ -145,6 +154,21 @@ export abstract class OltDriver {
 
   async rebootOnu(onu: Onu): Promise<OltDriverResult> {
     const commands = this.buildRebootOnuCommands(onu);
+    return this.executeCommands(commands);
+  }
+
+  async createVlan(vlan: VlanConfig): Promise<OltDriverResult> {
+    const commands = this.buildCreateVlanCommands(vlan);
+    return this.executeCommands(commands);
+  }
+
+  async deleteVlan(vlanId: number): Promise<OltDriverResult> {
+    const commands = this.buildDeleteVlanCommands(vlanId);
+    return this.executeCommands(commands);
+  }
+
+  async saveConfig(): Promise<OltDriverResult> {
+    const commands = this.buildSaveConfigCommands();
     return this.executeCommands(commands);
   }
 }
@@ -287,6 +311,39 @@ export class HuaweiOltDriver extends OltDriver {
       `traffic-profile ip index 1`,
       `car cir ${downloadKbps} pir ${downloadKbps} cbs 0 pbs 0`,
       "quit",
+    ];
+  }
+
+  buildCreateVlanCommands(vlan: VlanConfig): string[] {
+    const commands = [
+      "enable",
+      "config",
+      `vlan ${vlan.vlanId} smart`,
+    ];
+    if (vlan.name) {
+      commands.push(`vlan name ${vlan.vlanId} name ${vlan.name}`);
+    }
+    if (vlan.description) {
+      commands.push(`vlan desc ${vlan.vlanId} description ${vlan.description}`);
+    }
+    commands.push("quit");
+    return commands;
+  }
+
+  buildDeleteVlanCommands(vlanId: number): string[] {
+    return [
+      "enable",
+      "config",
+      `undo vlan ${vlanId}`,
+      "quit",
+    ];
+  }
+
+  buildSaveConfigCommands(): string[] {
+    return [
+      "enable",
+      "save",
+      "y",
     ];
   }
 }
@@ -434,6 +491,35 @@ export class ZteOltDriver extends OltDriver {
       `cir ${downloadKbps}`,
       `pir ${downloadKbps}`,
       "exit",
+    ];
+  }
+
+  buildCreateVlanCommands(vlan: VlanConfig): string[] {
+    const commands = [
+      "enable",
+      "configure terminal",
+      `vlan ${vlan.vlanId}`,
+    ];
+    if (vlan.name) {
+      commands.push(`name ${vlan.name}`);
+    }
+    commands.push("exit");
+    return commands;
+  }
+
+  buildDeleteVlanCommands(vlanId: number): string[] {
+    return [
+      "enable",
+      "configure terminal",
+      `no vlan ${vlanId}`,
+      "exit",
+    ];
+  }
+
+  buildSaveConfigCommands(): string[] {
+    return [
+      "enable",
+      "write",
     ];
   }
 }

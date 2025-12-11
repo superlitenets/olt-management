@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,12 +28,26 @@ import {
   Cable,
   CircuitBoard,
   Router,
+  Plus,
+  Trash2,
+  Save,
+  Edit2,
 } from "lucide-react";
 import type { Olt, Onu, ServiceProfile } from "@shared/schema";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Zap } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 interface OltBoard {
   frame: number;
@@ -79,6 +94,18 @@ export default function OltDetailPage() {
   const [, params] = useRoute("/olts/:id");
   const oltId = params?.id;
   const { toast } = useToast();
+  
+  const [createVlanOpen, setCreateVlanOpen] = useState(false);
+  const [newVlanId, setNewVlanId] = useState("");
+  const [newVlanName, setNewVlanName] = useState("");
+  const [acsDialogOpen, setAcsDialogOpen] = useState(false);
+  const [acsForm, setAcsForm] = useState({
+    acsEnabled: false,
+    acsUrl: "",
+    acsUsername: "",
+    acsPassword: "",
+    acsPeriodicInformInterval: 3600,
+  });
 
   const { data: olt, isLoading: oltLoading } = useQuery<Olt>({
     queryKey: ["/api/olts", oltId],
@@ -223,6 +250,89 @@ export default function OltDetailPage() {
       toast({
         title: "Discovery Failed",
         description: error.message || "Could not discover ONUs",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const createVlanMutation = useMutation({
+    mutationFn: async (data: { vlanId: number; name?: string }) => {
+      return apiRequest("POST", `/api/olts/${oltId}/vlans`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/olts", oltId, "details"] });
+      setCreateVlanOpen(false);
+      setNewVlanId("");
+      setNewVlanName("");
+      toast({
+        title: "VLAN Created",
+        description: "VLAN has been created on the OLT",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to Create VLAN",
+        description: error.message || "Could not create VLAN",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteVlanMutation = useMutation({
+    mutationFn: async (vlanId: number) => {
+      return apiRequest("DELETE", `/api/olts/${oltId}/vlans/${vlanId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/olts", oltId, "details"] });
+      toast({
+        title: "VLAN Deleted",
+        description: "VLAN has been removed from the OLT",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to Delete VLAN",
+        description: error.message || "Could not delete VLAN",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const saveConfigMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", `/api/olts/${oltId}/save-config`);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Configuration Saved",
+        description: "OLT configuration has been saved",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to Save Config",
+        description: error.message || "Could not save configuration",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateAcsSettingsMutation = useMutation({
+    mutationFn: async (data: typeof acsForm) => {
+      return apiRequest("PATCH", `/api/olts/${oltId}/acs-settings`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/olts", oltId] });
+      setAcsDialogOpen(false);
+      toast({
+        title: "ACS Settings Updated",
+        description: "TR-069/ACS settings have been saved",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to Update ACS Settings",
+        description: error.message || "Could not update ACS settings",
         variant: "destructive",
       });
     },
@@ -394,28 +504,143 @@ export default function OltDetailPage() {
               </div>
             </div>
 
-            {olt.acsEnabled && (
-              <>
-                <Separator />
-                <div>
-                  <h4 className="text-sm font-medium mb-3">TR-069/ACS Configuration</h4>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div className="col-span-2">
-                      <p className="text-muted-foreground">ACS URL</p>
-                      <p className="font-mono text-xs break-all">{olt.acsUrl || "N/A"}</p>
+            <Separator />
+            <div>
+              <div className="flex items-center justify-between mb-3 gap-2">
+                <h4 className="text-sm font-medium">TR-069/ACS Configuration</h4>
+                <Dialog open={acsDialogOpen} onOpenChange={(open) => {
+                  setAcsDialogOpen(open);
+                  if (open && olt) {
+                    setAcsForm({
+                      acsEnabled: olt.acsEnabled || false,
+                      acsUrl: olt.acsUrl || "",
+                      acsUsername: olt.acsUsername || "",
+                      acsPassword: "",
+                      acsPeriodicInformInterval: olt.acsPeriodicInformInterval || 3600,
+                    });
+                  }
+                }}>
+                  <DialogTrigger asChild>
+                    <Button variant="ghost" size="sm" data-testid="button-edit-acs">
+                      <Edit2 className="h-4 w-4 mr-2" />
+                      Edit
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>TR-069/ACS Settings</DialogTitle>
+                      <DialogDescription>
+                        Configure ACS settings for zero-touch ONU provisioning
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="acs-enabled">Enable TR-069/ACS</Label>
+                        <Switch
+                          id="acs-enabled"
+                          checked={acsForm.acsEnabled}
+                          onCheckedChange={(checked) => setAcsForm({ ...acsForm, acsEnabled: checked })}
+                          data-testid="switch-acs-enabled"
+                        />
+                      </div>
+                      {acsForm.acsEnabled && (
+                        <>
+                          <div className="space-y-2">
+                            <Label htmlFor="acs-url">ACS URL</Label>
+                            <Input
+                              id="acs-url"
+                              placeholder="http://acs.example.com:7547/acs"
+                              value={acsForm.acsUrl}
+                              onChange={(e) => setAcsForm({ ...acsForm, acsUrl: e.target.value })}
+                              data-testid="input-acs-url"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="acs-username">Username</Label>
+                              <Input
+                                id="acs-username"
+                                placeholder="admin"
+                                value={acsForm.acsUsername}
+                                onChange={(e) => setAcsForm({ ...acsForm, acsUsername: e.target.value })}
+                                data-testid="input-acs-username"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="acs-password">Password</Label>
+                              <Input
+                                id="acs-password"
+                                type="password"
+                                placeholder="Leave empty to keep current"
+                                value={acsForm.acsPassword}
+                                onChange={(e) => setAcsForm({ ...acsForm, acsPassword: e.target.value })}
+                                data-testid="input-acs-password"
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="acs-interval">Periodic Inform Interval (seconds)</Label>
+                            <Input
+                              id="acs-interval"
+                              type="number"
+                              min="60"
+                              max="86400"
+                              value={acsForm.acsPeriodicInformInterval}
+                              onChange={(e) => setAcsForm({ ...acsForm, acsPeriodicInformInterval: parseInt(e.target.value, 10) || 3600 })}
+                              data-testid="input-acs-interval"
+                            />
+                          </div>
+                        </>
+                      )}
                     </div>
-                    <div>
-                      <p className="text-muted-foreground">ACS Username</p>
-                      <p className="font-mono">{olt.acsUsername || "N/A"}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Periodic Inform</p>
-                      <p className="font-mono">{olt.acsPeriodicInformInterval || 3600}s</p>
-                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setAcsDialogOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          const data = {
+                            acsEnabled: acsForm.acsEnabled,
+                            acsUrl: acsForm.acsUrl || null,
+                            acsUsername: acsForm.acsUsername || null,
+                            acsPassword: acsForm.acsPassword || null,
+                            acsPeriodicInformInterval: acsForm.acsPeriodicInformInterval,
+                          };
+                          updateAcsSettingsMutation.mutate(data);
+                        }}
+                        disabled={updateAcsSettingsMutation.isPending}
+                        data-testid="button-save-acs"
+                      >
+                        {updateAcsSettingsMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : null}
+                        Save Settings
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+              {olt.acsEnabled ? (
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="col-span-2">
+                    <p className="text-muted-foreground">ACS URL</p>
+                    <p className="font-mono text-xs break-all">{olt.acsUrl || "N/A"}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">ACS Username</p>
+                    <p className="font-mono">{olt.acsUsername || "N/A"}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Periodic Inform</p>
+                    <p className="font-mono">{olt.acsPeriodicInformInterval || 3600}s</p>
                   </div>
                 </div>
-              </>
-            )}
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  TR-069/ACS is not enabled for this OLT
+                </p>
+              )}
+            </div>
 
             <Separator />
             <div>
@@ -758,13 +983,121 @@ export default function OltDetailPage() {
               </TabsContent>
 
               <TabsContent value="vlans" className="mt-4">
+                <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+                  <p className="text-sm text-muted-foreground">
+                    {oltDetails.vlans.length} VLANs configured
+                  </p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Dialog open={createVlanOpen} onOpenChange={setCreateVlanOpen}>
+                      <DialogTrigger asChild>
+                        <Button size="sm" data-testid="button-create-vlan">
+                          <Plus className="h-4 w-4 mr-2" />
+                          Create VLAN
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Create VLAN</DialogTitle>
+                          <DialogDescription>
+                            Create a new VLAN on the OLT via CLI
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="vlan-id">VLAN ID</Label>
+                            <Input
+                              id="vlan-id"
+                              type="number"
+                              min="1"
+                              max="4094"
+                              placeholder="100"
+                              value={newVlanId}
+                              onChange={(e) => setNewVlanId(e.target.value)}
+                              data-testid="input-vlan-id"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="vlan-name">VLAN Name (Optional)</Label>
+                            <Input
+                              id="vlan-name"
+                              placeholder="Internet"
+                              value={newVlanName}
+                              onChange={(e) => setNewVlanName(e.target.value)}
+                              data-testid="input-vlan-name"
+                            />
+                          </div>
+                        </div>
+                        <DialogFooter>
+                          <Button
+                            variant="outline"
+                            onClick={() => setCreateVlanOpen(false)}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              const vlanId = parseInt(newVlanId, 10);
+                              if (vlanId >= 1 && vlanId <= 4094) {
+                                createVlanMutation.mutate({
+                                  vlanId,
+                                  name: newVlanName || undefined,
+                                });
+                              }
+                            }}
+                            disabled={createVlanMutation.isPending || !newVlanId}
+                            data-testid="button-confirm-create-vlan"
+                          >
+                            {createVlanMutation.isPending ? (
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : null}
+                            Create VLAN
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => saveConfigMutation.mutate()}
+                      disabled={saveConfigMutation.isPending}
+                      data-testid="button-save-config"
+                    >
+                      {saveConfigMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Save className="h-4 w-4 mr-2" />
+                      )}
+                      Save Config
+                    </Button>
+                  </div>
+                </div>
                 {oltDetails.vlans.length > 0 ? (
                   <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
                     {oltDetails.vlans.slice(0, 50).map((vlan, idx) => (
-                      <div key={idx} className="p-2 rounded-md border bg-muted/30">
-                        <span className="font-mono text-sm">{vlan.vlanId}</span>
+                      <div 
+                        key={idx} 
+                        className="p-2 rounded-md border bg-muted/30 group relative"
+                        data-testid={`vlan-item-${vlan.vlanId}`}
+                      >
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="font-mono text-sm">{vlan.vlanId}</span>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => {
+                              if (confirm(`Delete VLAN ${vlan.vlanId}?`)) {
+                                deleteVlanMutation.mutate(vlan.vlanId);
+                              }
+                            }}
+                            disabled={deleteVlanMutation.isPending}
+                            data-testid={`button-delete-vlan-${vlan.vlanId}`}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
                         <p className="text-xs text-muted-foreground truncate" title={vlan.name}>
-                          {vlan.name}
+                          {vlan.name || "-"}
                         </p>
                       </div>
                     ))}
