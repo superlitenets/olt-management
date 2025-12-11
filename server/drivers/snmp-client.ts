@@ -35,6 +35,7 @@ export interface DiscoveredOnu {
   ponPort: number;
   onuId: number;
   status: string;
+  description?: string;
   index: string;
 }
 
@@ -64,9 +65,10 @@ const HUAWEI_OIDS = {
   
   // GPON ONU table base OIDs
   onuSerialNumber: "1.3.6.1.4.1.2011.6.128.1.1.2.43.1.3",
-  onuStatus: "1.3.6.1.4.1.2011.6.128.1.1.2.46.1.15",
-  onuRxPower: "1.3.6.1.4.1.2011.6.128.1.1.2.51.1.4",
-  onuTxPower: "1.3.6.1.4.1.2011.6.128.1.1.2.51.1.6",
+  onuDescription: "1.3.6.1.4.1.2011.6.128.1.1.2.43.1.9",  // hwGponDeviceOntDespt
+  onuStatus: "1.3.6.1.4.1.2011.6.128.1.1.2.46.1.15",      // hwGponDeviceOntState: 1=online, 2=offline, 3=los
+  onuRxPower: "1.3.6.1.4.1.2011.6.128.1.1.2.51.1.4",      // hwGponOltOpticsDnRx (OLT receive = ONU transmit)
+  onuTxPower: "1.3.6.1.4.1.2011.6.128.1.1.2.51.1.6",      // hwGponOltOpticsUpTx 
   onuDistance: "1.3.6.1.4.1.2011.6.128.1.1.2.46.1.20",
   
   // PON port ONU count
@@ -82,6 +84,7 @@ const ZTE_OIDS = {
   
   // GPON ONU table base OIDs
   onuSerialNumber: "1.3.6.1.4.1.3902.1082.500.20.2.3.1.3",
+  onuDescription: "1.3.6.1.4.1.3902.1082.500.20.2.3.1.6",  // ZTE ONU description/name
   onuStatus: "1.3.6.1.4.1.3902.1082.500.20.2.3.1.5",
   onuRxPower: "1.3.6.1.4.1.3902.1082.500.20.2.4.1.3",
   onuTxPower: "1.3.6.1.4.1.3902.1082.500.20.2.4.1.4",
@@ -411,6 +414,17 @@ export class OltSnmpClient {
         console.log(`[SNMP] ONU status walk failed: ${err.message}`);
         return new Map();
       });
+      console.log(`[SNMP] Found ${statusResults.size} status entries`);
+
+      // Walk the ONU description table
+      let descResults = new Map<string, any>();
+      if (this.oids.onuDescription) {
+        descResults = await this.snmpClient.walk(this.oids.onuDescription).catch((err) => {
+          console.log(`[SNMP] ONU description walk failed: ${err.message}`);
+          return new Map();
+        });
+        console.log(`[SNMP] Found ${descResults.size} description entries`);
+      }
 
       // Parse discovered ONUs
       let parseCount = 0;
@@ -489,22 +503,54 @@ export class OltSnmpClient {
           }
 
           // Get status from status results
-          let status = "unknown";
+          let status = "offline";
           const statusOid = oid.replace(this.oids.onuSerialNumber, this.oids.onuStatus);
           if (statusResults.has(statusOid)) {
             const statusVal = Number(statusResults.get(statusOid));
-            // Huawei status: 1=online, 2=offline, 3=low_signal
-            // ZTE status: 1=online, 2=offline
-            status = statusVal === 1 ? "online" : statusVal === 2 ? "offline" : "unknown";
+            // Huawei status: 1=online, 2=offline, 3=los
+            // ZTE status: 1=online, 2=los, others=offline
+            if (this.vendor === "huawei") {
+              switch (statusVal) {
+                case 1: status = "online"; break;
+                case 2: status = "offline"; break;
+                case 3: status = "los"; break;
+                default: status = "offline";
+              }
+            } else {
+              switch (statusVal) {
+                case 1: status = "online"; break;
+                case 2: status = "los"; break;
+                default: status = "offline";
+              }
+            }
           }
 
-          console.log(`[SNMP] Discovered ONU: SN=${serialNumber}, PON=${ponPort}, ID=${onuId}, Status=${status}`);
+          // Get description from description results
+          let description: string | undefined;
+          const descOid = oid.replace(this.oids.onuSerialNumber, this.oids.onuDescription || "");
+          if (descResults.has(descOid)) {
+            const descValue = descResults.get(descOid);
+            if (typeof descValue === "string") {
+              description = descValue.trim();
+            } else if (Buffer.isBuffer(descValue)) {
+              description = descValue.toString("utf8").trim();
+            } else if (descValue) {
+              description = String(descValue).trim();
+            }
+            // Remove empty descriptions
+            if (!description || description === "") {
+              description = undefined;
+            }
+          }
+
+          console.log(`[SNMP] Discovered ONU: SN=${serialNumber}, PON=${ponPort}, ID=${onuId}, Status=${status}, Desc=${description || "N/A"}`);
 
           discoveredOnus.push({
             serialNumber,
             ponPort,
             onuId,
             status,
+            description,
             index: indexParts.join("."),
           });
         } catch (parseError) {

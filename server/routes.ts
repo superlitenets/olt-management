@@ -442,14 +442,19 @@ export async function registerRoutes(
           const serialUpper = discovered.serialNumber.toUpperCase();
           
           if (existingSerials.has(serialUpper)) {
-            // Update existing ONU status
+            // Update existing ONU status, description, and position
             const existing = existingOnus.find(o => o.serialNumber.toUpperCase() === serialUpper);
             if (existing) {
-              const updatedOnu = await storage.updateOnu(existing.id, {
-                status: discovered.status as "online" | "offline",
+              const updateData: any = {
+                status: discovered.status as "online" | "offline" | "los",
                 ponPort: discovered.ponPort,
                 onuId: discovered.onuId,
-              });
+              };
+              // Update description if provided and different from name
+              if (discovered.description) {
+                updateData.description = discovered.description;
+              }
+              const updatedOnu = await storage.updateOnu(existing.id, updateData);
               updated.push(updatedOnu);
             }
           } else {
@@ -458,12 +463,13 @@ export async function registerRoutes(
               const newOnu = await storage.createOnu({
                 tenantId,
                 oltId: olt.id,
-                name: `ONU-${discovered.serialNumber.slice(-8)}`,
+                name: discovered.description || `ONU-${discovered.serialNumber.slice(-8)}`,
                 serialNumber: discovered.serialNumber,
                 ponPort: discovered.ponPort,
                 onuId: discovered.onuId,
-                status: discovered.status as "online" | "offline",
+                status: discovered.status as "online" | "offline" | "los",
                 model: "Auto-discovered",
+                description: discovered.description || undefined,
               });
               created.push(newOnu);
               broadcast("onu:created", newOnu);

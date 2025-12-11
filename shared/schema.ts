@@ -112,6 +112,7 @@ export const onus = pgTable("onus", {
   serialNumber: varchar("serial_number", { length: 100 }).notNull(),
   macAddress: varchar("mac_address", { length: 17 }),
   name: varchar("name", { length: 255 }),
+  description: varchar("description", { length: 500 }),  // ONU description from OLT
   model: varchar("model", { length: 100 }),
   ponPort: integer("pon_port"),
   onuId: integer("onu_id"),
