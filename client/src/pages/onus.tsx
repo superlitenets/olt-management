@@ -66,8 +66,13 @@ import {
   Trash2,
   CheckSquare,
   Square,
+  History,
+  AlertCircle,
+  CheckCircle,
+  WifiOff,
+  Clock,
 } from "lucide-react";
-import type { Onu, Olt, ServiceProfile, Tr069Device } from "@shared/schema";
+import type { Onu, Olt, ServiceProfile, Tr069Device, OnuEvent } from "@shared/schema";
 
 export default function OnusPage() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -97,6 +102,11 @@ export default function OnusPage() {
 
   const { data: linkedTr069Device, refetch: refetchLinkedDevice } = useQuery<Tr069Device | null>({
     queryKey: selectedOnu ? [`/api/onus/${selectedOnu.id}/tr069`] : ["/api/onus/tr069-placeholder"],
+    enabled: !!selectedOnu,
+  });
+
+  const { data: onuEvents, isLoading: eventsLoading } = useQuery<OnuEvent[]>({
+    queryKey: selectedOnu ? ["/api/onus", selectedOnu.id, "events"] : ["/api/onus/events-placeholder"],
     enabled: !!selectedOnu,
   });
 
@@ -800,14 +810,18 @@ export default function OnusPage() {
           </DialogHeader>
           {selectedOnu && (
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-2">
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="details" data-testid="tab-onu-details">
                   <Eye className="h-4 w-4 mr-2" />
                   Details
                 </TabsTrigger>
+                <TabsTrigger value="events" data-testid="tab-onu-events">
+                  <History className="h-4 w-4 mr-2" />
+                  Events
+                </TabsTrigger>
                 <TabsTrigger value="tr069" data-testid="tab-onu-tr069">
                   <Settings className="h-4 w-4 mr-2" />
-                  TR-069/ACS
+                  TR-069
                 </TabsTrigger>
               </TabsList>
 
@@ -928,6 +942,96 @@ export default function OnusPage() {
                         </div>
                       )}
                     </div>
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="events" className="space-y-4 mt-4">
+                <div className="flex items-center justify-between gap-4">
+                  <h4 className="text-sm font-medium">Event History</h4>
+                  <Badge variant="secondary">{onuEvents?.length || 0} events</Badge>
+                </div>
+                
+                {eventsLoading ? (
+                  <div className="space-y-2">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="h-16 bg-muted animate-pulse rounded-md" />
+                    ))}
+                  </div>
+                ) : onuEvents && onuEvents.length > 0 ? (
+                  <div className="space-y-2 max-h-80 overflow-y-auto">
+                    {onuEvents.map((event) => {
+                      const getEventIcon = () => {
+                        switch (event.eventType) {
+                          case "online":
+                            return <CheckCircle className="h-4 w-4 text-emerald-500" />;
+                          case "offline":
+                            return <AlertCircle className="h-4 w-4 text-gray-500" />;
+                          case "los":
+                            return <WifiOff className="h-4 w-4 text-red-500" />;
+                          case "power_fail":
+                            return <AlertCircle className="h-4 w-4 text-amber-500" />;
+                          case "rebooted":
+                            return <RotateCcw className="h-4 w-4 text-blue-500" />;
+                          default:
+                            return <Clock className="h-4 w-4 text-muted-foreground" />;
+                        }
+                      };
+
+                      const getEventColor = () => {
+                        switch (event.eventType) {
+                          case "online":
+                            return "bg-emerald-500/10 border-emerald-500/20";
+                          case "offline":
+                            return "bg-gray-500/10 border-gray-500/20";
+                          case "los":
+                            return "bg-red-500/10 border-red-500/20";
+                          case "power_fail":
+                            return "bg-amber-500/10 border-amber-500/20";
+                          default:
+                            return "bg-muted/50";
+                        }
+                      };
+
+                      return (
+                        <div
+                          key={event.id}
+                          className={`p-3 rounded-md border ${getEventColor()}`}
+                          data-testid={`event-${event.id}`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="mt-0.5">{getEventIcon()}</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-medium text-sm capitalize">
+                                  {event.eventType.replace(/_/g, " ")}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {event.createdAt
+                                    ? new Date(event.createdAt).toLocaleString()
+                                    : "-"}
+                                </span>
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {event.previousStatus && event.newStatus && (
+                                  <span>
+                                    {event.previousStatus} → {event.newStatus}
+                                  </span>
+                                )}
+                                {event.details && (
+                                  <p className="mt-1">{event.details}</p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <History className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No events recorded for this ONU</p>
                   </div>
                 )}
               </TabsContent>
