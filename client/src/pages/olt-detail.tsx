@@ -28,7 +28,11 @@ import {
   CircuitBoard,
   Router,
 } from "lucide-react";
-import type { Olt, Onu } from "@shared/schema";
+import type { Olt, Onu, ServiceProfile } from "@shared/schema";
+import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Zap } from "lucide-react";
 
 interface OltBoard {
   frame: number;
@@ -91,7 +95,42 @@ export default function OltDetailPage() {
     queryKey: ["/api/onus"],
   });
 
+  const { data: serviceProfiles } = useQuery<ServiceProfile[]>({
+    queryKey: ["/api/service-profiles"],
+  });
+
   const oltOnus = onus?.filter((onu) => onu.oltId === oltId) || [];
+
+  const updateAutoProvisionMutation = useMutation({
+    mutationFn: async (data: { autoProvisionEnabled: boolean; autoProvisionServiceProfileId?: string | null }) => {
+      return apiRequest("PATCH", `/api/olts/${oltId}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/olts", oltId] });
+      toast({
+        title: "Updated",
+        description: "Auto-provisioning settings saved",
+      });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: "Failed to update auto-provisioning settings",
+        variant: "destructive",
+      });
+    },
+  });
 
   const testConnectionMutation = useMutation({
     mutationFn: async () => {
@@ -377,6 +416,66 @@ export default function OltDetailPage() {
                 </div>
               </>
             )}
+
+            <Separator />
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Zap className="h-4 w-4 text-amber-500" />
+                <h4 className="text-sm font-medium">Auto-Provisioning</h4>
+              </div>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="auto-provision-toggle">Enable Auto-Provisioning</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Automatically assign service profile to newly discovered ONUs
+                    </p>
+                  </div>
+                  <Switch
+                    id="auto-provision-toggle"
+                    checked={olt.autoProvisionEnabled || false}
+                    onCheckedChange={(checked) => {
+                      updateAutoProvisionMutation.mutate({
+                        autoProvisionEnabled: checked,
+                        autoProvisionServiceProfileId: checked ? olt.autoProvisionServiceProfileId : null,
+                      });
+                    }}
+                    data-testid="switch-auto-provision"
+                  />
+                </div>
+                {olt.autoProvisionEnabled && (
+                  <div className="space-y-2">
+                    <Label>Default Service Profile</Label>
+                    <Select
+                      value={olt.autoProvisionServiceProfileId || ""}
+                      onValueChange={(value) => {
+                        updateAutoProvisionMutation.mutate({
+                          autoProvisionEnabled: true,
+                          autoProvisionServiceProfileId: value || null,
+                        });
+                      }}
+                      data-testid="select-auto-provision-profile"
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a service profile" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {serviceProfiles?.map((profile) => (
+                          <SelectItem key={profile.id} value={profile.id}>
+                            {profile.name} ({profile.downloadSpeed}/{profile.uploadSpeed} Mbps)
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      {olt.autoProvisionServiceProfileId
+                        ? "New ONUs will be assigned this service profile during discovery"
+                        : "Select a profile to enable auto-provisioning"}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
           </CardContent>
         </Card>
 

@@ -128,7 +128,11 @@ export async function registerRoutes(
   app.get("/api/tenants", isAuthenticated, async (req, res) => {
     try {
       const tenants = await storage.getTenants();
-      res.json(tenants);
+      const safeTenants = tenants.map(({ webhookSecret, ...rest }) => ({
+        ...rest,
+        hasWebhookSecret: !!webhookSecret,
+      }));
+      res.json(safeTenants);
     } catch (error) {
       console.error("Error fetching tenants:", error);
       res.status(500).json({ message: "Failed to fetch tenants" });
@@ -139,14 +143,94 @@ export async function registerRoutes(
     try {
       const data = insertTenantSchema.parse(req.body);
       const tenant = await storage.createTenant(data);
-      broadcast("tenant:created", tenant);
-      res.status(201).json(tenant);
+      const { webhookSecret, ...safeTenant } = tenant;
+      broadcast("tenant:created", safeTenant);
+      res.status(201).json({ ...safeTenant, hasWebhookSecret: !!webhookSecret });
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
       console.error("Error creating tenant:", error);
       res.status(500).json({ message: "Failed to create tenant" });
+    }
+  });
+
+  app.get("/api/tenants/:id", isAuthenticated, async (req, res) => {
+    try {
+      const tenant = await storage.getTenant(req.params.id);
+      if (!tenant) {
+        return res.status(404).json({ message: "Tenant not found" });
+      }
+      const { webhookSecret, ...safeTenant } = tenant;
+      res.json({ ...safeTenant, hasWebhookSecret: !!webhookSecret });
+    } catch (error) {
+      console.error("Error fetching tenant:", error);
+      res.status(500).json({ message: "Failed to fetch tenant" });
+    }
+  });
+
+  app.patch("/api/tenants/:id/webhook", isAuthenticated, async (req: any, res) => {
+    try {
+      const webhookSchema = z.object({
+        webhookEnabled: z.boolean().optional(),
+        webhookUrl: z.string().url().max(500).optional().nullable(),
+        webhookSecret: z.string().max(255).optional().nullable(),
+        alertCriticalOnly: z.boolean().optional(),
+      }).refine((data) => {
+        if (data.webhookEnabled && !data.webhookUrl) {
+          return false;
+        }
+        return true;
+      }, { message: "webhookUrl is required when webhookEnabled is true" });
+
+      const validatedData = webhookSchema.parse(req.body);
+      
+      const userTenantId = req.user?.claims?.metadata?.tenantId;
+      if (userTenantId && userTenantId !== req.params.id) {
+        return res.status(403).json({ message: "Access denied: You can only update your own tenant's webhook settings" });
+      }
+      
+      const tenant = await storage.updateTenant(req.params.id, validatedData);
+      if (!tenant) {
+        return res.status(404).json({ message: "Tenant not found" });
+      }
+      const { webhookSecret, ...safeTenant } = tenant;
+      res.json({ ...safeTenant, hasWebhookSecret: !!webhookSecret });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      console.error("Error updating webhook settings:", error);
+      res.status(500).json({ message: "Failed to update webhook settings" });
+    }
+  });
+
+  app.post("/api/tenants/:id/webhook/test", isAuthenticated, async (req: any, res) => {
+    try {
+      const userTenantId = req.user?.claims?.metadata?.tenantId;
+      if (userTenantId && userTenantId !== req.params.id) {
+        return res.status(403).json({ message: "Access denied: You can only test your own tenant's webhook" });
+      }
+
+      const tenant = await storage.getTenant(req.params.id);
+      if (!tenant) {
+        return res.status(404).json({ message: "Tenant not found" });
+      }
+      if (!tenant.webhookUrl) {
+        return res.status(400).json({ message: "Webhook URL not configured" });
+      }
+
+      const { testWebhook } = await import("./webhook-service");
+      const result = await testWebhook(tenant.webhookUrl, tenant.webhookSecret || undefined);
+      
+      if (result.success) {
+        res.json({ success: true, message: "Webhook test successful" });
+      } else {
+        res.status(400).json({ success: false, error: result.error });
+      }
+    } catch (error) {
+      console.error("Error testing webhook:", error);
+      res.status(500).json({ message: "Failed to test webhook" });
     }
   });
 
@@ -561,7 +645,7 @@ export async function registerRoutes(
           } else {
             // Create new ONU
             try {
-              const newOnu = await storage.createOnu({
+              const newOnuData: any = {
                 tenantId,
                 oltId: olt.id,
                 name: discovered.description || `ONU-${discovered.serialNumber.slice(-8)}`,
@@ -571,7 +655,15 @@ export async function registerRoutes(
                 status: discovered.status as "online" | "offline" | "los",
                 model: "Auto-discovered",
                 description: discovered.description || undefined,
-              });
+              };
+
+              // Apply auto-provisioning if enabled
+              if (olt.autoProvisionEnabled && olt.autoProvisionServiceProfileId) {
+                newOnuData.serviceProfileId = olt.autoProvisionServiceProfileId;
+                console.log(`[discover-onus] Auto-provisioning ONU ${discovered.serialNumber} with profile ${olt.autoProvisionServiceProfileId}`);
+              }
+
+              const newOnu = await storage.createOnu(newOnuData);
               created.push(newOnu);
               broadcast("onu:created", newOnu);
             } catch (createError) {
@@ -1495,6 +1587,30 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching alert:", error);
       res.status(500).json({ message: "Failed to fetch alert" });
+    }
+  });
+
+  app.post("/api/alerts", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertAlertSchema.parse(req.body);
+      const alert = await storage.createAlert(data);
+      broadcast("alert:created", alert);
+
+      const tenant = await storage.getTenant(alert.tenantId);
+      if (tenant?.webhookEnabled && tenant?.webhookUrl) {
+        const { sendWebhookNotification } = await import("./webhook-service");
+        sendWebhookNotification(alert, tenant).catch((err) => {
+          console.error("[webhook] Failed to send notification:", err);
+        });
+      }
+
+      res.status(201).json(alert);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      console.error("Error creating alert:", error);
+      res.status(500).json({ message: "Failed to create alert" });
     }
   });
 

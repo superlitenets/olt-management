@@ -47,6 +47,10 @@ export const tenants = pgTable("tenants", {
   maxOlts: integer("max_olts").default(10),
   maxOnus: integer("max_onus").default(1000),
   isActive: boolean("is_active").default(true),
+  webhookEnabled: boolean("webhook_enabled").default(false),
+  webhookUrl: varchar("webhook_url", { length: 500 }),
+  webhookSecret: varchar("webhook_secret", { length: 255 }),
+  alertCriticalOnly: boolean("alert_critical_only").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -100,6 +104,8 @@ export const olts = pgTable("olts", {
   acsUsername: varchar("acs_username", { length: 100 }),
   acsPassword: varchar("acs_password", { length: 255 }),
   acsPeriodicInformInterval: integer("acs_periodic_inform_interval").default(3600),
+  autoProvisionEnabled: boolean("auto_provision_enabled").default(false),
+  autoProvisionServiceProfileId: varchar("auto_provision_service_profile_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
