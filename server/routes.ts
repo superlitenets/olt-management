@@ -551,6 +551,7 @@ export async function registerRoutes(
           
           if (opticalData) {
             const updateData: any = {};
+            if (opticalData.status !== undefined) updateData.status = opticalData.status;
             if (opticalData.rxPower !== undefined) updateData.rxPower = opticalData.rxPower;
             if (opticalData.txPower !== undefined) updateData.txPower = opticalData.txPower;
             if (opticalData.distance !== undefined) updateData.distance = opticalData.distance;
@@ -564,6 +565,10 @@ export async function registerRoutes(
               }
             }
           } else {
+            // No SNMP data means ONU is likely offline
+            try {
+              await storage.updateOnu(onu.id, { status: "offline" });
+            } catch (e) {}
             results.failed++;
           }
         }

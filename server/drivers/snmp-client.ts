@@ -525,12 +525,19 @@ export class OltSnmpClient {
     return {};
   }
 
-  // Bulk poll all ONU optical power levels via SNMP walk
+  // Bulk poll all ONU optical power levels and status via SNMP walk
   async bulkPollOpticalPower(): Promise<Map<string, OnuSnmpData>> {
     const results = new Map<string, OnuSnmpData>();
     
     try {
-      console.log(`[SNMP] Walking ONU optical power tables...`);
+      console.log(`[SNMP] Walking ONU status and optical power tables...`);
+      
+      // Walk status table first
+      const statusResults = await this.snmpClient.walk(this.oids.onuStatus).catch((err) => {
+        console.log(`[SNMP] Status walk failed: ${err.message}`);
+        return new Map();
+      });
+      console.log(`[SNMP] Found ${statusResults.size} status entries`);
       
       // Walk RX power table
       const rxResults = await this.snmpClient.walk(this.oids.onuRxPower).catch((err) => {
@@ -552,6 +559,41 @@ export class OltSnmpClient {
         return new Map();
       });
       console.log(`[SNMP] Found ${distResults.size} distance entries`);
+      
+      // Parse status results first
+      statusResults.forEach((value, oid) => {
+        try {
+          const { ponPort, onuId } = this.parseOltOidIndex(oid, this.oids.onuStatus);
+          const key = `${ponPort}.${onuId}`;
+          
+          if (!results.has(key)) {
+            results.set(key, {});
+          }
+          
+          // Huawei status values: 1=online, 2=offline, 3=los
+          // ZTE status values may differ
+          const statusValue = Number(value);
+          let status: string;
+          if (this.vendor === "huawei") {
+            switch (statusValue) {
+              case 1: status = "online"; break;
+              case 2: status = "offline"; break;
+              case 3: status = "los"; break;
+              default: status = "offline";
+            }
+          } else {
+            // ZTE status mapping
+            switch (statusValue) {
+              case 1: status = "online"; break;
+              case 2: status = "los"; break;
+              default: status = "offline";
+            }
+          }
+          results.get(key)!.status = status;
+        } catch (e) {
+          // Skip invalid entries
+        }
+      });
       
       // Parse RX power results and build result map keyed by ponPort.onuId
       rxResults.forEach((value, oid) => {
