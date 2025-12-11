@@ -433,7 +433,7 @@ export default function OnusPage() {
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search by SN, MAC, name, subscriber..."
+            placeholder="Search by SN, MAC, description..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
@@ -486,11 +486,11 @@ export default function OnusPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Serial Number</TableHead>
-                    <TableHead>Name / Subscriber</TableHead>
+                    <TableHead>Description</TableHead>
                     <TableHead>OLT</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Signal</TableHead>
-                    <TableHead>IP Address</TableHead>
+                    <TableHead>Distance</TableHead>
                     <TableHead>Profile</TableHead>
                     <TableHead>Uptime</TableHead>
                     <TableHead className="w-10"></TableHead>
@@ -510,14 +510,7 @@ export default function OnusPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div>
-                          <span className="font-medium">{onu.name || "-"}</span>
-                          {onu.subscriberName && (
-                            <p className="text-xs text-muted-foreground">
-                              {onu.subscriberName}
-                            </p>
-                          )}
-                        </div>
+                        <span className="text-sm">{onu.name || "-"}</span>
                       </TableCell>
                       <TableCell>
                         <div className="text-sm">
@@ -534,7 +527,9 @@ export default function OnusPage() {
                         <SignalIndicator rxPower={onu.rxPower} txPower={onu.txPower} />
                       </TableCell>
                       <TableCell>
-                        <span className="font-mono text-sm">{onu.ipAddress || "-"}</span>
+                        <span className="font-mono text-sm">
+                          {onu.distance ? `${onu.distance}m` : "-"}
+                        </span>
                       </TableCell>
                       <TableCell>
                         <span className="text-sm">{getProfileName(onu.serviceProfileId)}</span>
