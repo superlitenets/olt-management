@@ -71,7 +71,11 @@ import {
   CheckCircle,
   WifiOff,
   Clock,
+  List,
+  Edit2,
+  Save,
 } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import type { Onu, Olt, ServiceProfile, Tr069Device, OnuEvent } from "@shared/schema";
 
 export default function OnusPage() {
@@ -100,6 +104,12 @@ export default function OnusPage() {
     lineNumber: "1",
     enabled: true,
   });
+  const [parametersDialogOpen, setParametersDialogOpen] = useState(false);
+  const [parametersFilter, setParametersFilter] = useState("");
+  const [editingParameter, setEditingParameter] = useState<{ path: string; value: string; type?: string } | null>(null);
+  const [newParameterValue, setNewParameterValue] = useState("");
+  const [newParameterType, setNewParameterType] = useState<string>("xsd:string");
+  const [fetchingParams, setFetchingParams] = useState(false);
   const { toast } = useToast();
 
   const { data: onus, isLoading } = useQuery<Onu[]>({
@@ -1173,6 +1183,20 @@ export default function OnusPage() {
                           variant="outline"
                           className="flex flex-col items-center gap-2 h-auto py-4"
                           onClick={() => {
+                            setParametersFilter("");
+                            setEditingParameter(null);
+                            setParametersDialogOpen(true);
+                          }}
+                          disabled={createTr069TaskMutation.isPending}
+                          data-testid="button-tr069-parameters"
+                        >
+                          <List className="h-5 w-5" />
+                          <span className="text-xs">View Parameters</span>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="flex flex-col items-center gap-2 h-auto py-4"
+                          onClick={() => {
                             if (confirm("Are you sure you want to factory reset this device? This will erase all configuration.")) {
                               createTr069TaskMutation.mutate({
                                 onuId: selectedOnu.id,
@@ -1541,6 +1565,195 @@ export default function OnusPage() {
               data-testid="button-voip-submit"
             >
               Apply Configuration
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={parametersDialogOpen} onOpenChange={setParametersDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <List className="h-5 w-5" />
+              TR-069 Device Parameters
+            </DialogTitle>
+            <DialogDescription>
+              View and edit device parameters via TR-069. Changes are sent as SetParameterValues tasks.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedOnu && linkedTr069Device ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
+                  <Input
+                    placeholder="Filter parameters (e.g. WiFi, SSID, Device.Info)"
+                    value={parametersFilter}
+                    onChange={(e) => setParametersFilter(e.target.value)}
+                    data-testid="input-parameters-filter"
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setFetchingParams(true);
+                    createTr069TaskMutation.mutate({
+                      onuId: selectedOnu.id,
+                      taskType: "get_parameter_values",
+                      parameters: { parameterNames: ["Device."] }
+                    }, {
+                      onSettled: () => setFetchingParams(false)
+                    });
+                  }}
+                  disabled={fetchingParams || createTr069TaskMutation.isPending}
+                  data-testid="button-refresh-parameters"
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${fetchingParams ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              </div>
+              
+              <ScrollArea className="h-[400px] border rounded-md">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[50%]">Parameter Path</TableHead>
+                      <TableHead className="w-[35%]">Value</TableHead>
+                      <TableHead className="w-[15%]">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {linkedTr069Device.parameterCache && typeof linkedTr069Device.parameterCache === 'object' ? (
+                      Object.entries(linkedTr069Device.parameterCache as Record<string, unknown>)
+                        .filter(([path]) => 
+                          !parametersFilter || 
+                          path.toLowerCase().includes(parametersFilter.toLowerCase())
+                        )
+                        .slice(0, 100)
+                        .map(([path, value]) => {
+                          const inferType = (val: unknown): string => {
+                            const strVal = String(val ?? "");
+                            if (strVal === "true" || strVal === "false") return "xsd:boolean";
+                            if (/^\d+$/.test(strVal) && !isNaN(parseInt(strVal))) return "xsd:unsignedInt";
+                            return "xsd:string";
+                          };
+                          return (
+                          <TableRow key={path}>
+                            <TableCell className="font-mono text-xs break-all">{path}</TableCell>
+                            <TableCell>
+                              {editingParameter?.path === path ? (
+                                <div className="flex flex-col gap-1">
+                                  <Input
+                                    value={newParameterValue}
+                                    onChange={(e) => setNewParameterValue(e.target.value)}
+                                    className="h-8 text-sm"
+                                    data-testid={`input-param-${path}`}
+                                  />
+                                  <Select value={newParameterType} onValueChange={setNewParameterType}>
+                                    <SelectTrigger className="h-7 text-xs" data-testid={`select-param-type-${path}`}>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="xsd:string">String</SelectItem>
+                                      <SelectItem value="xsd:unsignedInt">Integer</SelectItem>
+                                      <SelectItem value="xsd:boolean">Boolean</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              ) : (
+                                <span className="text-sm break-all">{String(value ?? "")}</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {editingParameter?.path === path ? (
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      createTr069TaskMutation.mutate({
+                                        onuId: selectedOnu.id,
+                                        taskType: "set_parameter_values",
+                                        parameters: {
+                                          parameterValues: [{
+                                            name: path,
+                                            value: newParameterValue,
+                                            type: newParameterType
+                                          }]
+                                        }
+                                      });
+                                      setEditingParameter(null);
+                                    }}
+                                    disabled={createTr069TaskMutation.isPending}
+                                    data-testid={`button-save-param-${path}`}
+                                  >
+                                    <Save className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => setEditingParameter(null)}
+                                    data-testid={`button-cancel-param-${path}`}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    setEditingParameter({ path, value: String(value ?? "") });
+                                    setNewParameterValue(String(value ?? ""));
+                                    setNewParameterType(inferType(value));
+                                  }}
+                                  data-testid={`button-edit-param-${path}`}
+                                >
+                                  <Edit2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );})
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
+                          <div className="flex flex-col items-center gap-2">
+                            <AlertCircle className="h-8 w-8" />
+                            <p>No parameters cached yet.</p>
+                            <p className="text-xs">Click "Refresh" to fetch parameters from the device.</p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </ScrollArea>
+              
+              {(() => {
+                const cache = linkedTr069Device.parameterCache;
+                if (!cache || typeof cache !== 'object') return null;
+                const entries = Object.entries(cache as Record<string, string>);
+                const filtered = entries.filter(([path]) => !parametersFilter || path.toLowerCase().includes(parametersFilter.toLowerCase()));
+                const total = entries.length;
+                const shown = Math.min(100, filtered.length);
+                return (
+                  <p className="text-xs text-muted-foreground">
+                    {`Showing ${shown} of ${total} parameters${parametersFilter ? ` (filtered by "${parametersFilter}")` : ""}`}
+                  </p>
+                );
+              })()}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">No TR-069 device linked to this ONU.</p>
+              <p className="text-xs text-muted-foreground mt-1">Link a TR-069 device first to view parameters.</p>
+            </div>
+          )}
+          <div className="flex justify-end gap-3 pt-4">
+            <Button variant="outline" onClick={() => setParametersDialogOpen(false)}>
+              Close
             </Button>
           </div>
         </DialogContent>

@@ -212,6 +212,7 @@ VoIP/SIP Configuration:
 - `Device.Services.VoiceService.1.VoiceProfile.1.Line.{n}.SIP.AuthPassword` - SIP password
 
 ## Recent Changes
+- December 2025: Added TR-069 parameters viewer/editor with type selector (String, Integer, Boolean) for inline editing
 - December 2025: Added TR-069 WiFi configuration dialog with SSID, password, security mode, channel settings
 - December 2025: Added TR-069 VoIP/SIP configuration dialog with server, credentials, line settings
 - December 2025: Added TR-069 Factory Reset action with confirmation
