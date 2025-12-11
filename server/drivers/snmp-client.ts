@@ -521,50 +521,140 @@ export class OltSnmpClient {
   }
 
   async getOnuOpticalPower(ponPort: number, onuId: number): Promise<OnuSnmpData> {
+    // Individual ONU poll - not efficient for Huawei, use bulkPollOpticalPower instead
+    return {};
+  }
+
+  // Bulk poll all ONU optical power levels via SNMP walk
+  async bulkPollOpticalPower(): Promise<Map<string, OnuSnmpData>> {
+    const results = new Map<string, OnuSnmpData>();
+    
     try {
-      // Build ONU-specific OIDs based on vendor indexing scheme
-      let rxOid: string;
-      let txOid: string;
-      let distOid: string;
+      console.log(`[SNMP] Walking ONU optical power tables...`);
       
-      if (this.vendor === "huawei") {
-        // Huawei uses frame/slot/port/onuid index
-        // Simplified: assuming frame 0, slot 0
-        const index = `${ponPort}.${onuId}`;
-        rxOid = `${this.oids.onuRxPower}.${index}`;
-        txOid = `${this.oids.onuTxPower}.${index}`;
-        distOid = `${this.oids.onuDistance}.${index}`;
-      } else {
-        // ZTE uses gpon-onu_slotId/portId:onuId format index
-        const index = `${ponPort}.${onuId}`;
-        rxOid = `${this.oids.onuRxPower}.${index}`;
-        txOid = `${this.oids.onuTxPower}.${index}`;
-        distOid = `${this.oids.onuDistance}.${index}`;
-      }
-
-      const results = await this.snmpClient.get([rxOid, txOid, distOid]);
+      // Walk RX power table
+      const rxResults = await this.snmpClient.walk(this.oids.onuRxPower).catch((err) => {
+        console.log(`[SNMP] RX power walk failed: ${err.message}`);
+        return new Map();
+      });
+      console.log(`[SNMP] Found ${rxResults.size} RX power entries`);
       
-      const data: OnuSnmpData = {};
+      // Walk TX power table
+      const txResults = await this.snmpClient.walk(this.oids.onuTxPower).catch((err) => {
+        console.log(`[SNMP] TX power walk failed: ${err.message}`);
+        return new Map();
+      });
+      console.log(`[SNMP] Found ${txResults.size} TX power entries`);
       
-      if (results.has(rxOid)) {
-        // Power is typically in 0.01 dBm units
-        data.rxPower = Number(results.get(rxOid)) / 100;
-      }
+      // Walk distance table  
+      const distResults = await this.snmpClient.walk(this.oids.onuDistance).catch((err) => {
+        console.log(`[SNMP] Distance walk failed: ${err.message}`);
+        return new Map();
+      });
+      console.log(`[SNMP] Found ${distResults.size} distance entries`);
       
-      if (results.has(txOid)) {
-        data.txPower = Number(results.get(txOid)) / 100;
-      }
+      // Parse RX power results and build result map keyed by ponPort.onuId
+      rxResults.forEach((value, oid) => {
+        try {
+          const { ponPort, onuId } = this.parseOltOidIndex(oid, this.oids.onuRxPower);
+          const key = `${ponPort}.${onuId}`;
+          
+          if (!results.has(key)) {
+            results.set(key, {});
+          }
+          
+          // Power is typically in 0.01 dBm units
+          const rxPower = Number(value) / 100;
+          if (rxPower > -50 && rxPower < 10) { // Valid range check
+            results.get(key)!.rxPower = rxPower;
+          }
+        } catch (e) {
+          // Skip invalid entries
+        }
+      });
       
-      if (results.has(distOid)) {
-        // Distance in meters
-        data.distance = Number(results.get(distOid));
-      }
-
-      return data;
+      // Add TX power to results
+      txResults.forEach((value, oid) => {
+        try {
+          const { ponPort, onuId } = this.parseOltOidIndex(oid, this.oids.onuTxPower);
+          const key = `${ponPort}.${onuId}`;
+          
+          if (!results.has(key)) {
+            results.set(key, {});
+          }
+          
+          const txPower = Number(value) / 100;
+          if (txPower > -50 && txPower < 10) { // Valid range check
+            results.get(key)!.txPower = txPower;
+          }
+        } catch (e) {
+          // Skip invalid entries
+        }
+      });
+      
+      // Add distance to results
+      distResults.forEach((value, oid) => {
+        try {
+          const { ponPort, onuId } = this.parseOltOidIndex(oid, this.oids.onuDistance);
+          const key = `${ponPort}.${onuId}`;
+          
+          if (!results.has(key)) {
+            results.set(key, {});
+          }
+          
+          const distance = Number(value);
+          if (distance > 0 && distance < 100000) { // Valid range check (up to 100km)
+            results.get(key)!.distance = distance;
+          }
+        } catch (e) {
+          // Skip invalid entries
+        }
+      });
+      
+      console.log(`[SNMP] Parsed optical data for ${results.size} ONUs`);
+      return results;
     } catch (error) {
-      console.error("SNMP getOnuOpticalPower error:", error);
-      return {};
+      console.error("SNMP bulkPollOpticalPower error:", error);
+      return results;
     }
+  }
+  
+  // Parse OID index to extract ponPort and onuId
+  private parseOltOidIndex(oid: string, baseOid: string): { ponPort: number; onuId: number } {
+    const oidParts = oid.split(".");
+    const baseLength = baseOid.split(".").length;
+    const indexParts = oidParts.slice(baseLength);
+    
+    let ponPort = 0;
+    let onuId = 0;
+    
+    if (this.vendor === "huawei") {
+      // Huawei format: <ifIndex>.<onuId>
+      if (indexParts.length >= 2) {
+        const ifIndex = parseInt(indexParts[0]) || 0;
+        onuId = parseInt(indexParts[1]) || 0;
+        
+        // Decode ifIndex to get slot/port
+        const baseIndex = 4194304000;
+        if (ifIndex >= baseIndex) {
+          const offset = ifIndex - baseIndex;
+          const slot = Math.floor(offset / 65536) & 0xFF;
+          const port = Math.floor((offset % 65536) / 256) & 0xFF;
+          ponPort = slot * 8 + port;
+        }
+      }
+    } else {
+      // ZTE format: <slotPort>.<onuId>
+      if (indexParts.length >= 2) {
+        ponPort = parseInt(indexParts[0]) || 0;
+        onuId = parseInt(indexParts[1]) || 0;
+      }
+    }
+    
+    ponPort = Math.max(0, Math.min(ponPort, 255));
+    onuId = Math.max(1, Math.min(onuId, 255));
+    
+    return { ponPort, onuId };
   }
 
   async testConnection(): Promise<boolean> {

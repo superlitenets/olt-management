@@ -528,7 +528,7 @@ export async function registerRoutes(
       try {
         // Get all ONUs for this OLT
         const onus = await storage.getOnus(undefined, olt.id);
-        console.log(`[poll-onus] Polling ${onus.length} ONUs...`);
+        console.log(`[poll-onus] Found ${onus.length} ONUs, starting bulk SNMP walk...`);
 
         const results: { updated: number; failed: number; errors: string[] } = {
           updated: 0,
@@ -536,29 +536,35 @@ export async function registerRoutes(
           errors: [],
         };
 
-        // Poll each ONU
+        // Use bulk walk method for efficiency
+        const opticalDataMap = await snmpClient.bulkPollOpticalPower();
+        console.log(`[poll-onus] Got optical data for ${opticalDataMap.size} ONUs from SNMP`);
+
+        // Match SNMP results to ONUs by ponPort.onuId key
         for (const onu of onus) {
           if (!onu.ponPort || !onu.onuId) {
             continue;
           }
 
-          try {
-            const opticalData = await snmpClient.getOnuOpticalPower(onu.ponPort, onu.onuId);
-            
+          const key = `${onu.ponPort}.${onu.onuId}`;
+          const opticalData = opticalDataMap.get(key);
+          
+          if (opticalData) {
             const updateData: any = {};
             if (opticalData.rxPower !== undefined) updateData.rxPower = opticalData.rxPower;
             if (opticalData.txPower !== undefined) updateData.txPower = opticalData.txPower;
             if (opticalData.distance !== undefined) updateData.distance = opticalData.distance;
 
             if (Object.keys(updateData).length > 0) {
-              await storage.updateOnu(onu.id, updateData);
-              results.updated++;
+              try {
+                await storage.updateOnu(onu.id, updateData);
+                results.updated++;
+              } catch (updateError) {
+                results.failed++;
+              }
             }
-          } catch (pollError) {
+          } else {
             results.failed++;
-            if (results.errors.length < 5) {
-              results.errors.push(`${onu.serialNumber}: ${pollError instanceof Error ? pollError.message : 'Unknown error'}`);
-            }
           }
         }
 
