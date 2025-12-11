@@ -18,7 +18,7 @@ import { z } from "zod";
 export const userRoleEnum = pgEnum("user_role", ["super_admin", "tenant_admin", "operator"]);
 export const oltVendorEnum = pgEnum("olt_vendor", ["huawei", "zte", "fiberhome", "nokia", "other"]);
 export const oltStatusEnum = pgEnum("olt_status", ["online", "offline", "degraded", "maintenance"]);
-export const onuStatusEnum = pgEnum("onu_status", ["online", "offline", "los", "dyinggasp", "poweroff"]);
+export const onuStatusEnum = pgEnum("onu_status", ["online", "offline", "los"]);
 export const onuModeEnum = pgEnum("onu_mode", ["bridge", "route"]);
 export const ipModeEnum = pgEnum("ip_mode", ["static", "dhcp", "pppoe"]);
 export const networkTypeEnum = pgEnum("network_type", ["gpon", "epon", "xgpon", "xgspon"]);

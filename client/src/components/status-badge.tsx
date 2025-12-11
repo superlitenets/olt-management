@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-type StatusType = "online" | "offline" | "degraded" | "maintenance" | "los" | "dyinggasp" | "poweroff" | "active" | "acknowledged" | "resolved" | "critical" | "warning" | "info";
+type StatusType = "online" | "offline" | "degraded" | "maintenance" | "los" | "active" | "acknowledged" | "resolved" | "critical" | "warning" | "info";
 
 interface StatusBadgeProps {
   status: StatusType;
@@ -28,14 +28,6 @@ const statusConfig: Record<StatusType, { label: string; className: string }> = {
   los: {
     label: "LOS",
     className: "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30",
-  },
-  dyinggasp: {
-    label: "Dying Gasp",
-    className: "bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-500/30",
-  },
-  poweroff: {
-    label: "Power Off",
-    className: "bg-gray-500/15 text-gray-600 dark:text-gray-400 border-gray-500/30",
   },
   active: {
     label: "Active",
@@ -82,8 +74,6 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
         status === "degraded" && "bg-amber-500",
         status === "maintenance" && "bg-blue-500",
         status === "los" && "bg-red-500 animate-pulse",
-        status === "dyinggasp" && "bg-orange-500",
-        status === "poweroff" && "bg-gray-500",
         status === "active" && "bg-red-500 animate-pulse",
         status === "acknowledged" && "bg-amber-500",
         status === "resolved" && "bg-emerald-500",
