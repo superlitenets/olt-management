@@ -188,7 +188,34 @@ The system supports two authentication methods:
 - Dark mode support
 - Consistent spacing and typography
 
+## TR-069 Task Types
+The following task types are supported by the ACS server (use snake_case):
+- `get_parameter_values` - Get device parameters (requires `parameterNames` array)
+- `set_parameter_values` - Set device parameters (requires `parameterValues` array with name/value pairs)
+- `download` - Download firmware or config file
+- `reboot` - Reboot device
+- `factory_reset` - Factory reset device
+
+### Common TR-069 Parameter Paths
+WiFi Configuration:
+- `Device.WiFi.SSID.1.SSID` - WiFi network name
+- `Device.WiFi.SSID.1.Enable` - Enable/disable WiFi ("1" or "0")
+- `Device.WiFi.AccessPoint.1.Security.ModeEnabled` - Security mode (WPA2-Personal, WPA3-Personal, etc.)
+- `Device.WiFi.AccessPoint.1.Security.KeyPassphrase` - WiFi password
+- `Device.WiFi.Radio.1.Channel` - WiFi channel
+
+VoIP/SIP Configuration:
+- `Device.Services.VoiceService.1.VoiceProfile.1.Enable` - Enable voice profile
+- `Device.Services.VoiceService.1.VoiceProfile.1.SIP.ProxyServer` - SIP proxy server
+- `Device.Services.VoiceService.1.VoiceProfile.1.SIP.ProxyServerPort` - SIP port
+- `Device.Services.VoiceService.1.VoiceProfile.1.Line.{n}.SIP.AuthUserName` - SIP username
+- `Device.Services.VoiceService.1.VoiceProfile.1.Line.{n}.SIP.AuthPassword` - SIP password
+
 ## Recent Changes
+- December 2025: Added TR-069 WiFi configuration dialog with SSID, password, security mode, channel settings
+- December 2025: Added TR-069 VoIP/SIP configuration dialog with server, credentials, line settings
+- December 2025: Added TR-069 Factory Reset action with confirmation
+- December 2025: Fixed TR-069 task types to use snake_case format (set_parameter_values, get_parameter_values, etc.)
 - December 2025: Enhanced OLT Hardware Details - Real-time SNMP discovery of boards, uplinks, VLANs, PON ports with multiple OID fallbacks for different OLT models
 - December 2025: Added VLAN management via CLI - Create/delete VLANs and configure VLAN trunks on uplink ports (trunk, access, hybrid modes)
 - December 2025: Added TR-069/ACS configuration UI - Edit ACS settings (URL, credentials, periodic inform) directly from OLT detail page

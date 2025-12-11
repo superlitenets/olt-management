@@ -82,6 +82,24 @@ export default function OnusPage() {
   const [selectedOnu, setSelectedOnu] = useState<Onu | null>(null);
   const [activeTab, setActiveTab] = useState("details");
   const [selectedOnuIds, setSelectedOnuIds] = useState<Set<string>>(new Set());
+  const [wifiDialogOpen, setWifiDialogOpen] = useState(false);
+  const [voipDialogOpen, setVoipDialogOpen] = useState(false);
+  const [wifiConfig, setWifiConfig] = useState({
+    ssid: "",
+    password: "",
+    securityMode: "WPA2-Personal",
+    channel: "auto",
+    enabled: true,
+  });
+  const [voipConfig, setVoipConfig] = useState({
+    sipServer: "",
+    sipPort: "5060",
+    username: "",
+    password: "",
+    displayName: "",
+    lineNumber: "1",
+    enabled: true,
+  });
   const { toast } = useToast();
 
   const { data: onus, isLoading } = useQuery<Onu[]>({
@@ -1086,7 +1104,7 @@ export default function OnusPage() {
                           className="flex flex-col items-center gap-2 h-auto py-4"
                           onClick={() => createTr069TaskMutation.mutate({
                             onuId: selectedOnu.id,
-                            taskType: "getParameterValues",
+                            taskType: "get_parameter_values",
                             parameters: { parameterNames: ["Device."] }
                           })}
                           disabled={createTr069TaskMutation.isPending}
@@ -1098,16 +1116,16 @@ export default function OnusPage() {
                         <Button
                           variant="outline"
                           className="flex flex-col items-center gap-2 h-auto py-4"
-                          onClick={() => createTr069TaskMutation.mutate({
-                            onuId: selectedOnu.id,
-                            taskType: "setParameterValues",
-                            parameters: {
-                              parameterList: [
-                                { name: "Device.WiFi.SSID.1.SSID", value: "ONU_WiFi" },
-                                { name: "Device.WiFi.SSID.1.Enable", value: "1" }
-                              ]
-                            }
-                          })}
+                          onClick={() => {
+                            setWifiConfig({
+                              ssid: "",
+                              password: "",
+                              securityMode: "WPA2-Personal",
+                              channel: "auto",
+                              enabled: true,
+                            });
+                            setWifiDialogOpen(true);
+                          }}
                           disabled={createTr069TaskMutation.isPending}
                           data-testid="button-tr069-wifi"
                         >
@@ -1117,15 +1135,18 @@ export default function OnusPage() {
                         <Button
                           variant="outline"
                           className="flex flex-col items-center gap-2 h-auto py-4"
-                          onClick={() => createTr069TaskMutation.mutate({
-                            onuId: selectedOnu.id,
-                            taskType: "setParameterValues",
-                            parameters: {
-                              parameterList: [
-                                { name: "Device.Services.VoiceService.1.VoiceProfile.1.Enable", value: "Enabled" }
-                              ]
-                            }
-                          })}
+                          onClick={() => {
+                            setVoipConfig({
+                              sipServer: "",
+                              sipPort: "5060",
+                              username: "",
+                              password: "",
+                              displayName: "",
+                              lineNumber: "1",
+                              enabled: true,
+                            });
+                            setVoipDialogOpen(true);
+                          }}
                           disabled={createTr069TaskMutation.isPending}
                           data-testid="button-tr069-voip"
                         >
@@ -1145,6 +1166,26 @@ export default function OnusPage() {
                         >
                           <RotateCcw className="h-5 w-5" />
                           <span className="text-xs">Reboot Device</span>
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+                        <Button
+                          variant="outline"
+                          className="flex flex-col items-center gap-2 h-auto py-4"
+                          onClick={() => {
+                            if (confirm("Are you sure you want to factory reset this device? This will erase all configuration.")) {
+                              createTr069TaskMutation.mutate({
+                                onuId: selectedOnu.id,
+                                taskType: "factory_reset",
+                                parameters: {}
+                              });
+                            }
+                          }}
+                          disabled={createTr069TaskMutation.isPending}
+                          data-testid="button-tr069-factory-reset"
+                        >
+                          <Zap className="h-5 w-5" />
+                          <span className="text-xs">Factory Reset</span>
                         </Button>
                       </div>
                     </div>
@@ -1249,6 +1290,257 @@ export default function OnusPage() {
           <div className="flex justify-end gap-3 pt-4">
             <Button variant="outline" onClick={() => setPreviewDialogOpen(false)}>
               Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={wifiDialogOpen} onOpenChange={setWifiDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wifi className="h-5 w-5" />
+              Configure WiFi
+            </DialogTitle>
+            <DialogDescription>
+              Configure wireless network settings for this ONU via TR-069
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>SSID (Network Name)</Label>
+              <Input
+                value={wifiConfig.ssid}
+                onChange={(e) => setWifiConfig({ ...wifiConfig, ssid: e.target.value })}
+                placeholder="Enter WiFi network name"
+                data-testid="input-wifi-ssid"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Password</Label>
+              <Input
+                type="password"
+                value={wifiConfig.password}
+                onChange={(e) => setWifiConfig({ ...wifiConfig, password: e.target.value })}
+                placeholder="Enter WiFi password (min 8 characters)"
+                data-testid="input-wifi-password"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Security Mode</Label>
+              <Select
+                value={wifiConfig.securityMode}
+                onValueChange={(value) => setWifiConfig({ ...wifiConfig, securityMode: value })}
+              >
+                <SelectTrigger data-testid="select-wifi-security">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="WPA2-Personal">WPA2-Personal (Recommended)</SelectItem>
+                  <SelectItem value="WPA3-Personal">WPA3-Personal</SelectItem>
+                  <SelectItem value="WPA-WPA2-Personal">WPA/WPA2-Personal (Mixed)</SelectItem>
+                  <SelectItem value="None">Open (No Security)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Channel</Label>
+              <Select
+                value={wifiConfig.channel}
+                onValueChange={(value) => setWifiConfig({ ...wifiConfig, channel: value })}
+              >
+                <SelectTrigger data-testid="select-wifi-channel">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">Auto</SelectItem>
+                  <SelectItem value="1">Channel 1</SelectItem>
+                  <SelectItem value="6">Channel 6</SelectItem>
+                  <SelectItem value="11">Channel 11</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="wifi-enabled"
+                checked={wifiConfig.enabled}
+                onCheckedChange={(checked) => setWifiConfig({ ...wifiConfig, enabled: !!checked })}
+                data-testid="checkbox-wifi-enabled"
+              />
+              <Label htmlFor="wifi-enabled">Enable WiFi</Label>
+            </div>
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setWifiDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!selectedOnu) return;
+                if (!wifiConfig.ssid) {
+                  toast({ title: "Error", description: "SSID is required", variant: "destructive" });
+                  return;
+                }
+                if (wifiConfig.securityMode !== "None" && wifiConfig.password.length < 8) {
+                  toast({ title: "Error", description: "Password must be at least 8 characters", variant: "destructive" });
+                  return;
+                }
+                const parameterValues: Array<{ name: string; value: string; type?: string }> = [
+                  { name: "Device.WiFi.SSID.1.SSID", value: wifiConfig.ssid, type: "xsd:string" },
+                  { name: "Device.WiFi.SSID.1.Enable", value: wifiConfig.enabled ? "true" : "false", type: "xsd:boolean" },
+                  { name: "Device.WiFi.AccessPoint.1.Security.ModeEnabled", value: wifiConfig.securityMode, type: "xsd:string" },
+                ];
+                if (wifiConfig.password) {
+                  parameterValues.push({ name: "Device.WiFi.AccessPoint.1.Security.KeyPassphrase", value: wifiConfig.password, type: "xsd:string" });
+                }
+                if (wifiConfig.channel !== "auto") {
+                  const channelNum = parseInt(wifiConfig.channel, 10);
+                  parameterValues.push({ name: "Device.WiFi.Radio.1.Channel", value: String(channelNum), type: "xsd:unsignedInt" });
+                  parameterValues.push({ name: "Device.WiFi.Radio.1.AutoChannelEnable", value: "false", type: "xsd:boolean" });
+                } else {
+                  parameterValues.push({ name: "Device.WiFi.Radio.1.Channel", value: "0", type: "xsd:unsignedInt" });
+                  parameterValues.push({ name: "Device.WiFi.Radio.1.AutoChannelEnable", value: "true", type: "xsd:boolean" });
+                }
+                createTr069TaskMutation.mutate({
+                  onuId: selectedOnu.id,
+                  taskType: "set_parameter_values",
+                  parameters: { parameterValues }
+                });
+                setWifiDialogOpen(false);
+              }}
+              disabled={createTr069TaskMutation.isPending}
+              data-testid="button-wifi-submit"
+            >
+              Apply Configuration
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={voipDialogOpen} onOpenChange={setVoipDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Phone className="h-5 w-5" />
+              Configure VoIP
+            </DialogTitle>
+            <DialogDescription>
+              Configure SIP/VoIP settings for this ONU via TR-069
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>SIP Server</Label>
+              <Input
+                value={voipConfig.sipServer}
+                onChange={(e) => setVoipConfig({ ...voipConfig, sipServer: e.target.value })}
+                placeholder="sip.example.com"
+                data-testid="input-voip-server"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>SIP Port</Label>
+              <Input
+                value={voipConfig.sipPort}
+                onChange={(e) => setVoipConfig({ ...voipConfig, sipPort: e.target.value })}
+                placeholder="5060"
+                data-testid="input-voip-port"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Username</Label>
+              <Input
+                value={voipConfig.username}
+                onChange={(e) => setVoipConfig({ ...voipConfig, username: e.target.value })}
+                placeholder="SIP account username"
+                data-testid="input-voip-username"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Password</Label>
+              <Input
+                type="password"
+                value={voipConfig.password}
+                onChange={(e) => setVoipConfig({ ...voipConfig, password: e.target.value })}
+                placeholder="SIP account password"
+                data-testid="input-voip-password"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Display Name (Caller ID)</Label>
+              <Input
+                value={voipConfig.displayName}
+                onChange={(e) => setVoipConfig({ ...voipConfig, displayName: e.target.value })}
+                placeholder="John Doe"
+                data-testid="input-voip-display-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Line Number</Label>
+              <Select
+                value={voipConfig.lineNumber}
+                onValueChange={(value) => setVoipConfig({ ...voipConfig, lineNumber: value })}
+              >
+                <SelectTrigger data-testid="select-voip-line">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">Line 1</SelectItem>
+                  <SelectItem value="2">Line 2</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="voip-enabled"
+                checked={voipConfig.enabled}
+                onCheckedChange={(checked) => setVoipConfig({ ...voipConfig, enabled: !!checked })}
+                data-testid="checkbox-voip-enabled"
+              />
+              <Label htmlFor="voip-enabled">Enable VoIP</Label>
+            </div>
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setVoipDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!selectedOnu) return;
+                if (!voipConfig.sipServer) {
+                  toast({ title: "Error", description: "SIP Server is required", variant: "destructive" });
+                  return;
+                }
+                if (!voipConfig.username) {
+                  toast({ title: "Error", description: "Username is required", variant: "destructive" });
+                  return;
+                }
+                const lineNum = voipConfig.lineNumber;
+                const parameterValues: Array<{ name: string; value: string; type?: string }> = [
+                  { name: `Device.Services.VoiceService.1.VoiceProfile.1.Enable`, value: voipConfig.enabled ? "Enabled" : "Disabled", type: "xsd:string" },
+                  { name: `Device.Services.VoiceService.1.VoiceProfile.1.SIP.ProxyServer`, value: voipConfig.sipServer, type: "xsd:string" },
+                  { name: `Device.Services.VoiceService.1.VoiceProfile.1.SIP.ProxyServerPort`, value: voipConfig.sipPort, type: "xsd:unsignedInt" },
+                  { name: `Device.Services.VoiceService.1.VoiceProfile.1.SIP.ProxyServerTransport`, value: "UDP", type: "xsd:string" },
+                  { name: `Device.Services.VoiceService.1.VoiceProfile.1.SIP.RegistrarServer`, value: voipConfig.sipServer, type: "xsd:string" },
+                  { name: `Device.Services.VoiceService.1.VoiceProfile.1.SIP.RegistrarServerPort`, value: voipConfig.sipPort, type: "xsd:unsignedInt" },
+                  { name: `Device.Services.VoiceService.1.VoiceProfile.1.SIP.RegistrarServerTransport`, value: "UDP", type: "xsd:string" },
+                  { name: `Device.Services.VoiceService.1.VoiceProfile.1.Line.${lineNum}.Enable`, value: voipConfig.enabled ? "Enabled" : "Disabled", type: "xsd:string" },
+                  { name: `Device.Services.VoiceService.1.VoiceProfile.1.Line.${lineNum}.DirectoryNumber`, value: voipConfig.username, type: "xsd:string" },
+                  { name: `Device.Services.VoiceService.1.VoiceProfile.1.Line.${lineNum}.SIP.AuthUserName`, value: voipConfig.username, type: "xsd:string" },
+                  { name: `Device.Services.VoiceService.1.VoiceProfile.1.Line.${lineNum}.SIP.AuthPassword`, value: voipConfig.password, type: "xsd:string" },
+                  { name: `Device.Services.VoiceService.1.VoiceProfile.1.Line.${lineNum}.CallingFeatures.CallerIDName`, value: voipConfig.displayName || voipConfig.username, type: "xsd:string" },
+                ];
+                createTr069TaskMutation.mutate({
+                  onuId: selectedOnu.id,
+                  taskType: "set_parameter_values",
+                  parameters: { parameterValues }
+                });
+                setVoipDialogOpen(false);
+              }}
+              disabled={createTr069TaskMutation.isPending}
+              data-testid="button-voip-submit"
+            >
+              Apply Configuration
             </Button>
           </div>
         </DialogContent>
