@@ -39,6 +39,43 @@ export interface DiscoveredOnu {
   index: string;
 }
 
+export interface OltBoard {
+  frame: number;
+  slot: number;
+  boardType: string;
+  status: string;
+  cpuUsage?: number;
+  memoryUsage?: number;
+  temperature?: number;
+}
+
+export interface OltUplink {
+  port: string;
+  name: string;
+  status: string;
+  speed?: string;
+  inTraffic?: number;
+  outTraffic?: number;
+}
+
+export interface OltVlan {
+  vlanId: number;
+  name: string;
+  ports?: string[];
+}
+
+export interface OltDetailedInfo {
+  sysName: string;
+  sysDescr: string;
+  sysUptime: number;
+  sysLocation?: string;
+  sysContact?: string;
+  boards: OltBoard[];
+  uplinks: OltUplink[];
+  vlans: OltVlan[];
+  ponPorts: { port: number; onuCount: number; status: string }[];
+}
+
 // Standard MIB-2 OIDs
 const STANDARD_OIDS = {
   sysDescr: "1.3.6.1.2.1.1.1.0",
@@ -57,11 +94,27 @@ const HUAWEI_OIDS = {
   boardCpuUsage: "1.3.6.1.4.1.2011.6.3.3.2.1.6",      // hwBoardCpuRate
   boardMemoryUsage: "1.3.6.1.4.1.2011.6.3.3.2.1.8",   // hwBoardRamUseRate  
   boardTemperature: "1.3.6.1.4.1.2011.6.3.3.2.1.10",  // hwBoardTemperature
+  boardType: "1.3.6.1.4.1.2011.6.3.3.2.1.1",          // hwBoardType
+  boardStatus: "1.3.6.1.4.1.2011.6.3.3.2.1.5",        // hwBoardOperStatus
   
   // Alternative system-level OIDs (hwEntitySystemModel - may not exist on all models)
   cpuUsage: "1.3.6.1.4.1.2011.6.3.4.1.2.0",
   memoryUsage: "1.3.6.1.4.1.2011.6.3.4.1.3.0",
   temperature: "1.3.6.1.4.1.2011.6.3.4.1.4.0",
+  
+  // Interface/Port OIDs (IF-MIB)
+  ifDescr: "1.3.6.1.2.1.2.2.1.2",                      // Interface description
+  ifOperStatus: "1.3.6.1.2.1.2.2.1.8",                 // Interface operational status
+  ifSpeed: "1.3.6.1.2.1.2.2.1.5",                      // Interface speed
+  ifInOctets: "1.3.6.1.2.1.2.2.1.10",                  // Inbound traffic
+  ifOutOctets: "1.3.6.1.2.1.2.2.1.16",                 // Outbound traffic
+  ifAlias: "1.3.6.1.2.1.31.1.1.1.18",                  // Interface alias/name
+  
+  // VLAN OIDs
+  vlanName: "1.3.6.1.4.1.2011.5.6.1.1.1.1.2",         // hwVlanName
+  
+  // PON port status
+  ponPortStatus: "1.3.6.1.4.1.2011.6.128.1.1.2.21.1.7", // hwGponOltEthPortOperStatus
   
   // GPON ONU table base OIDs
   onuSerialNumber: "1.3.6.1.4.1.2011.6.128.1.1.2.43.1.3",
@@ -81,6 +134,27 @@ const ZTE_OIDS = {
   cpuUsage: "1.3.6.1.4.1.3902.1082.500.10.2.2.1.1.8.1",
   memoryUsage: "1.3.6.1.4.1.3902.1082.500.10.2.2.1.1.9.1",
   temperature: "1.3.6.1.4.1.3902.1082.500.10.2.2.1.1.10.1",
+  
+  // Board info
+  boardCpuUsage: "1.3.6.1.4.1.3902.1082.500.10.2.2.1.1.8",
+  boardMemoryUsage: "1.3.6.1.4.1.3902.1082.500.10.2.2.1.1.9",
+  boardTemperature: "1.3.6.1.4.1.3902.1082.500.10.2.2.1.1.10",
+  boardType: "1.3.6.1.4.1.3902.1082.500.10.2.2.1.1.2",
+  boardStatus: "1.3.6.1.4.1.3902.1082.500.10.2.2.1.1.3",
+  
+  // Interface/Port OIDs (IF-MIB)
+  ifDescr: "1.3.6.1.2.1.2.2.1.2",
+  ifOperStatus: "1.3.6.1.2.1.2.2.1.8",
+  ifSpeed: "1.3.6.1.2.1.2.2.1.5",
+  ifInOctets: "1.3.6.1.2.1.2.2.1.10",
+  ifOutOctets: "1.3.6.1.2.1.2.2.1.16",
+  ifAlias: "1.3.6.1.2.1.31.1.1.1.18",
+  
+  // VLAN OIDs
+  vlanName: "1.3.6.1.4.1.3902.1082.500.6.1.1.1.2",
+  
+  // PON port status
+  ponPortStatus: "1.3.6.1.4.1.3902.1082.500.20.2.2.1.4",
   
   // GPON ONU table base OIDs
   onuSerialNumber: "1.3.6.1.4.1.3902.1082.500.20.2.3.1.3",
@@ -751,6 +825,224 @@ export class OltSnmpClient {
       return results.size > 0;
     } catch (error) {
       return false;
+    }
+  }
+
+  // Get detailed OLT information including boards, uplinks, VLANs
+  async getDetailedInfo(): Promise<OltDetailedInfo> {
+    console.log(`[SNMP] Fetching detailed OLT info...`);
+    
+    const info: OltDetailedInfo = {
+      sysName: "",
+      sysDescr: "",
+      sysUptime: 0,
+      boards: [],
+      uplinks: [],
+      vlans: [],
+      ponPorts: [],
+    };
+
+    try {
+      // Get basic system info
+      const sysResults = await this.snmpClient.get([
+        STANDARD_OIDS.sysDescr,
+        STANDARD_OIDS.sysName,
+        STANDARD_OIDS.sysUptime,
+        STANDARD_OIDS.sysLocation,
+        STANDARD_OIDS.sysContact,
+      ]);
+      
+      info.sysDescr = String(sysResults.get(STANDARD_OIDS.sysDescr) || "");
+      info.sysName = String(sysResults.get(STANDARD_OIDS.sysName) || "");
+      info.sysUptime = Number(sysResults.get(STANDARD_OIDS.sysUptime) || 0);
+      info.sysLocation = String(sysResults.get(STANDARD_OIDS.sysLocation) || "");
+      info.sysContact = String(sysResults.get(STANDARD_OIDS.sysContact) || "");
+
+      // Get board information
+      console.log(`[SNMP] Walking board tables...`);
+      const boardTypes = await this.snmpClient.walk(this.oids.boardType).catch(() => new Map());
+      const boardStatuses = await this.snmpClient.walk(this.oids.boardStatus).catch(() => new Map());
+      const boardCpus = await this.snmpClient.walk(this.oids.boardCpuUsage).catch(() => new Map());
+      const boardMems = await this.snmpClient.walk(this.oids.boardMemoryUsage).catch(() => new Map());
+      const boardTemps = await this.snmpClient.walk(this.oids.boardTemperature).catch(() => new Map());
+
+      // Parse boards
+      const boardMap = new Map<string, OltBoard>();
+      boardTypes.forEach((value, oid) => {
+        const parts = oid.split(".");
+        const frame = parseInt(parts[parts.length - 2]) || 0;
+        const slot = parseInt(parts[parts.length - 1]) || 0;
+        const key = `${frame}.${slot}`;
+        
+        let boardType = "";
+        if (Buffer.isBuffer(value)) {
+          boardType = value.toString("utf8").trim();
+        } else {
+          boardType = String(value);
+        }
+        
+        boardMap.set(key, {
+          frame,
+          slot,
+          boardType,
+          status: "unknown",
+        });
+      });
+
+      // Add status to boards
+      boardStatuses.forEach((value, oid) => {
+        const parts = oid.split(".");
+        const frame = parseInt(parts[parts.length - 2]) || 0;
+        const slot = parseInt(parts[parts.length - 1]) || 0;
+        const key = `${frame}.${slot}`;
+        
+        if (boardMap.has(key)) {
+          const statusVal = Number(value);
+          boardMap.get(key)!.status = statusVal === 1 ? "normal" : statusVal === 2 ? "fault" : "unknown";
+        }
+      });
+
+      // Add CPU/Memory/Temp to boards
+      boardCpus.forEach((value, oid) => {
+        const parts = oid.split(".");
+        const frame = parseInt(parts[parts.length - 2]) || 0;
+        const slot = parseInt(parts[parts.length - 1]) || 0;
+        const key = `${frame}.${slot}`;
+        if (boardMap.has(key)) {
+          boardMap.get(key)!.cpuUsage = Number(value);
+        }
+      });
+
+      boardMems.forEach((value, oid) => {
+        const parts = oid.split(".");
+        const frame = parseInt(parts[parts.length - 2]) || 0;
+        const slot = parseInt(parts[parts.length - 1]) || 0;
+        const key = `${frame}.${slot}`;
+        if (boardMap.has(key)) {
+          boardMap.get(key)!.memoryUsage = Number(value);
+        }
+      });
+
+      boardTemps.forEach((value, oid) => {
+        const parts = oid.split(".");
+        const frame = parseInt(parts[parts.length - 2]) || 0;
+        const slot = parseInt(parts[parts.length - 1]) || 0;
+        const key = `${frame}.${slot}`;
+        if (boardMap.has(key)) {
+          boardMap.get(key)!.temperature = Number(value);
+        }
+      });
+
+      info.boards = Array.from(boardMap.values()).sort((a, b) => 
+        a.frame - b.frame || a.slot - b.slot
+      );
+      console.log(`[SNMP] Found ${info.boards.length} boards`);
+
+      // Get interface/uplink information
+      console.log(`[SNMP] Walking interface tables...`);
+      const ifDescrs = await this.snmpClient.walk(this.oids.ifDescr).catch(() => new Map());
+      const ifStatuses = await this.snmpClient.walk(this.oids.ifOperStatus).catch(() => new Map());
+      const ifSpeeds = await this.snmpClient.walk(this.oids.ifSpeed).catch(() => new Map());
+      const ifAliases = await this.snmpClient.walk(this.oids.ifAlias).catch(() => new Map());
+
+      // Parse interfaces - filter for uplinks (GE/XGE/Eth ports)
+      ifDescrs.forEach((value, oid) => {
+        const ifIndex = oid.split(".").pop() || "";
+        let descr = "";
+        if (Buffer.isBuffer(value)) {
+          descr = value.toString("utf8").trim();
+        } else {
+          descr = String(value);
+        }
+        
+        // Filter for uplink ports (GigabitEthernet, XGigabitEthernet, Eth)
+        if (descr.match(/^(GigabitEthernet|XGigabitEthernet|Eth|eth|ge|xge)/i)) {
+          const statusOid = `${this.oids.ifOperStatus}.${ifIndex}`;
+          const speedOid = `${this.oids.ifSpeed}.${ifIndex}`;
+          const aliasOid = `${this.oids.ifAlias}.${ifIndex}`;
+          
+          const statusVal = Number(ifStatuses.get(statusOid) || 2);
+          const speedVal = Number(ifSpeeds.get(speedOid) || 0);
+          let alias = "";
+          const aliasVal = ifAliases.get(aliasOid);
+          if (Buffer.isBuffer(aliasVal)) {
+            alias = aliasVal.toString("utf8").trim();
+          } else if (aliasVal) {
+            alias = String(aliasVal);
+          }
+
+          info.uplinks.push({
+            port: descr,
+            name: alias || descr,
+            status: statusVal === 1 ? "up" : "down",
+            speed: speedVal > 0 ? `${speedVal / 1000000}Mbps` : undefined,
+          });
+        }
+      });
+      console.log(`[SNMP] Found ${info.uplinks.length} uplink ports`);
+
+      // Get VLAN information
+      console.log(`[SNMP] Walking VLAN table...`);
+      const vlanNames = await this.snmpClient.walk(this.oids.vlanName).catch(() => new Map());
+      
+      vlanNames.forEach((value, oid) => {
+        const vlanId = parseInt(oid.split(".").pop() || "0");
+        let name = "";
+        if (Buffer.isBuffer(value)) {
+          name = value.toString("utf8").trim();
+        } else {
+          name = String(value);
+        }
+        
+        if (vlanId > 0 && vlanId < 4095) {
+          info.vlans.push({ vlanId, name: name || `VLAN${vlanId}` });
+        }
+      });
+      
+      info.vlans.sort((a, b) => a.vlanId - b.vlanId);
+      console.log(`[SNMP] Found ${info.vlans.length} VLANs`);
+
+      // Get PON port info
+      console.log(`[SNMP] Walking PON port tables...`);
+      const ponCounts = await this.snmpClient.walk(this.oids.ponOnuCount).catch(() => new Map());
+      const ponStatuses = await this.snmpClient.walk(this.oids.ponPortStatus).catch(() => new Map());
+
+      ponCounts.forEach((value, oid) => {
+        const parts = oid.split(".");
+        const baseLen = this.oids.ponOnuCount.split(".").length;
+        const indexParts = parts.slice(baseLen);
+        
+        let port = 0;
+        if (this.vendor === "huawei" && indexParts.length >= 1) {
+          const ifIndex = parseInt(indexParts[0]) || 0;
+          const baseIndex = 4194304000;
+          if (ifIndex >= baseIndex) {
+            const offset = ifIndex - baseIndex;
+            const slot = Math.floor(offset / 65536) & 0xFF;
+            const portNum = Math.floor((offset % 65536) / 256) & 0xFF;
+            port = slot * 8 + portNum;
+          }
+        } else {
+          port = parseInt(indexParts[0]) || 0;
+        }
+
+        const statusOid = oid.replace(this.oids.ponOnuCount, this.oids.ponPortStatus);
+        const statusVal = Number(ponStatuses.get(statusOid) || 1);
+
+        info.ponPorts.push({
+          port,
+          onuCount: Number(value) || 0,
+          status: statusVal === 1 ? "up" : "down",
+        });
+      });
+      
+      info.ponPorts.sort((a, b) => a.port - b.port);
+      console.log(`[SNMP] Found ${info.ponPorts.length} PON ports`);
+
+      return info;
+    } catch (error) {
+      console.error("[SNMP] getDetailedInfo error:", error);
+      return info;
     }
   }
 

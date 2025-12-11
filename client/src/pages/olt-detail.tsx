@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusBadge } from "@/components/status-badge";
 import { VendorLogo } from "@/components/vendor-logo";
 import { useToast } from "@/hooks/use-toast";
@@ -22,8 +23,53 @@ import {
   Network,
   Settings,
   Loader2,
+  Layers,
+  Cable,
+  CircuitBoard,
+  Router,
 } from "lucide-react";
 import type { Olt, Onu } from "@shared/schema";
+
+interface OltBoard {
+  frame: number;
+  slot: number;
+  boardType: string;
+  status: string;
+  cpuUsage?: number;
+  memoryUsage?: number;
+  temperature?: number;
+}
+
+interface OltUplink {
+  port: string;
+  name: string;
+  status: string;
+  speed?: string;
+}
+
+interface OltVlan {
+  vlanId: number;
+  name: string;
+}
+
+interface PonPort {
+  port: number;
+  onuCount: number;
+  status: string;
+}
+
+interface OltDetails {
+  olt: Olt;
+  sysName: string;
+  sysDescr: string;
+  sysUptime: number;
+  sysLocation?: string;
+  sysContact?: string;
+  boards: OltBoard[];
+  uplinks: OltUplink[];
+  vlans: OltVlan[];
+  ponPorts: PonPort[];
+}
 
 export default function OltDetailPage() {
   const [, params] = useRoute("/olts/:id");
@@ -33,6 +79,12 @@ export default function OltDetailPage() {
   const { data: olt, isLoading: oltLoading } = useQuery<Olt>({
     queryKey: ["/api/olts", oltId],
     enabled: !!oltId,
+  });
+
+  const { data: oltDetails, isLoading: detailsLoading, error: detailsError, refetch: refetchDetails } = useQuery<OltDetails>({
+    queryKey: ["/api/olts", oltId, "details"],
+    enabled: !!oltId,
+    retry: 1,
   });
 
   const { data: onus } = useQuery<Onu[]>({
@@ -427,6 +479,218 @@ export default function OltDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      <Card data-testid="card-hardware-details">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center justify-between gap-2">
+            <span>Hardware Details</span>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => {
+                refetchDetails();
+                toast({
+                  title: "Refreshing",
+                  description: "Fetching hardware details from OLT...",
+                });
+              }}
+              disabled={detailsLoading}
+              data-testid="button-refresh-details"
+            >
+              {detailsLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+            </Button>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {detailsLoading ? (
+            <div className="flex items-center justify-center py-8" data-testid="loading-hardware-details">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <span className="ml-2 text-muted-foreground">Loading hardware details...</span>
+            </div>
+          ) : detailsError ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center" data-testid="error-hardware-details">
+              <Server className="h-10 w-10 text-muted-foreground mb-3" />
+              <p className="text-sm font-medium mb-1">Failed to load hardware details</p>
+              <p className="text-xs text-muted-foreground mb-3">
+                Could not connect to OLT via SNMP. Check connection settings.
+              </p>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => refetchDetails()}
+                data-testid="button-retry-details"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Retry
+              </Button>
+            </div>
+          ) : oltDetails ? (
+            <Tabs defaultValue="boards" className="w-full" data-testid="tabs-hardware-details">
+              <TabsList className="grid w-full grid-cols-4 flex-wrap gap-1">
+                <TabsTrigger value="boards" data-testid="tab-boards">
+                  <CircuitBoard className="h-4 w-4 mr-2" />
+                  Boards ({oltDetails.boards.length})
+                </TabsTrigger>
+                <TabsTrigger value="ponports" data-testid="tab-ponports">
+                  <Router className="h-4 w-4 mr-2" />
+                  PON Ports ({oltDetails.ponPorts.length})
+                </TabsTrigger>
+                <TabsTrigger value="uplinks" data-testid="tab-uplinks">
+                  <Cable className="h-4 w-4 mr-2" />
+                  Uplinks ({oltDetails.uplinks.length})
+                </TabsTrigger>
+                <TabsTrigger value="vlans" data-testid="tab-vlans">
+                  <Layers className="h-4 w-4 mr-2" />
+                  VLANs ({oltDetails.vlans.length})
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="boards" className="mt-4">
+                {oltDetails.boards.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left py-2 px-3 font-medium">Slot</th>
+                          <th className="text-left py-2 px-3 font-medium">Type</th>
+                          <th className="text-left py-2 px-3 font-medium">Status</th>
+                          <th className="text-left py-2 px-3 font-medium">CPU</th>
+                          <th className="text-left py-2 px-3 font-medium">Memory</th>
+                          <th className="text-left py-2 px-3 font-medium">Temp</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {oltDetails.boards.map((board, idx) => (
+                          <tr key={idx} className="border-b last:border-0">
+                            <td className="py-2 px-3 font-mono">{board.frame}/{board.slot}</td>
+                            <td className="py-2 px-3">{board.boardType || "Unknown"}</td>
+                            <td className="py-2 px-3">
+                              <Badge variant={board.status === "normal" ? "default" : "destructive"}>
+                                {board.status}
+                              </Badge>
+                            </td>
+                            <td className="py-2 px-3 font-mono">
+                              {board.cpuUsage !== undefined ? `${board.cpuUsage}%` : "-"}
+                            </td>
+                            <td className="py-2 px-3 font-mono">
+                              {board.memoryUsage !== undefined ? `${board.memoryUsage}%` : "-"}
+                            </td>
+                            <td className="py-2 px-3 font-mono">
+                              {board.temperature !== undefined ? `${board.temperature}°C` : "-"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No board information available
+                  </p>
+                )}
+              </TabsContent>
+
+              <TabsContent value="ponports" className="mt-4">
+                {oltDetails.ponPorts.length > 0 ? (
+                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                    {oltDetails.ponPorts.map((port, idx) => (
+                      <div 
+                        key={idx} 
+                        className={`p-3 rounded-md border ${
+                          port.status === "up" ? "bg-green-500/10 border-green-500/30" : "bg-muted/50 border-muted"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-medium">PON {port.port}</span>
+                          <Badge variant={port.status === "up" ? "default" : "secondary"} className="text-xs">
+                            {port.status}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {port.onuCount} ONUs
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No PON port information available
+                  </p>
+                )}
+              </TabsContent>
+
+              <TabsContent value="uplinks" className="mt-4">
+                {oltDetails.uplinks.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left py-2 px-3 font-medium">Port</th>
+                          <th className="text-left py-2 px-3 font-medium">Name</th>
+                          <th className="text-left py-2 px-3 font-medium">Status</th>
+                          <th className="text-left py-2 px-3 font-medium">Speed</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {oltDetails.uplinks.map((uplink, idx) => (
+                          <tr key={idx} className="border-b last:border-0">
+                            <td className="py-2 px-3 font-mono text-xs">{uplink.port}</td>
+                            <td className="py-2 px-3">{uplink.name}</td>
+                            <td className="py-2 px-3">
+                              <Badge variant={uplink.status === "up" ? "default" : "secondary"}>
+                                {uplink.status}
+                              </Badge>
+                            </td>
+                            <td className="py-2 px-3 font-mono">{uplink.speed || "-"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No uplink information available
+                  </p>
+                )}
+              </TabsContent>
+
+              <TabsContent value="vlans" className="mt-4">
+                {oltDetails.vlans.length > 0 ? (
+                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                    {oltDetails.vlans.slice(0, 50).map((vlan, idx) => (
+                      <div key={idx} className="p-2 rounded-md border bg-muted/30">
+                        <span className="font-mono text-sm">{vlan.vlanId}</span>
+                        <p className="text-xs text-muted-foreground truncate" title={vlan.name}>
+                          {vlan.name}
+                        </p>
+                      </div>
+                    ))}
+                    {oltDetails.vlans.length > 50 && (
+                      <div className="p-2 rounded-md border bg-muted/30 flex items-center justify-center">
+                        <span className="text-xs text-muted-foreground">
+                          +{oltDetails.vlans.length - 50} more
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No VLAN information available
+                  </p>
+                )}
+              </TabsContent>
+            </Tabs>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              Failed to load hardware details. Click refresh to try again.
+            </p>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

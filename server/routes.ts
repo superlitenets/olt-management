@@ -150,6 +150,70 @@ export async function registerRoutes(
     }
   });
 
+  // Get detailed OLT information (boards, uplinks, VLANs, PON ports)
+  app.get("/api/olts/:id/details", isAuthenticated, async (req, res) => {
+    let snmpClient: any = null;
+    
+    try {
+      const olt = await storage.getOlt(req.params.id);
+      if (!olt) {
+        return res.status(404).json({ message: "OLT not found" });
+      }
+
+      const { createSnmpClient } = await import("./drivers/snmp-client");
+      const normalizedVendor = olt.vendor.toLowerCase() as "huawei" | "zte";
+      
+      if (normalizedVendor !== "huawei" && normalizedVendor !== "zte") {
+        return res.status(400).json({ 
+          message: `Unsupported vendor: ${olt.vendor}` 
+        });
+      }
+
+      try {
+        snmpClient = createSnmpClient(
+          olt.ipAddress,
+          olt.snmpCommunity || "public",
+          normalizedVendor,
+          olt.snmpPort || 161
+        );
+      } catch (connError) {
+        console.error("Failed to create SNMP client:", connError);
+        return res.status(502).json({
+          message: "Failed to connect to OLT via SNMP",
+          error: connError instanceof Error ? connError.message : "Connection failed"
+        });
+      }
+
+      try {
+        const details = await snmpClient.getDetailedInfo();
+        res.json({
+          olt,
+          ...details,
+        });
+      } catch (snmpError) {
+        console.error("SNMP query failed:", snmpError);
+        return res.status(502).json({
+          message: "SNMP query failed",
+          error: snmpError instanceof Error ? snmpError.message : "Query failed"
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching OLT details:", error);
+      res.status(500).json({ 
+        message: "Failed to fetch OLT details",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    } finally {
+      if (snmpClient) {
+        try {
+          snmpClient.close();
+        } catch (e) {
+          // Ignore close errors
+        }
+      }
+    }
+  });
+
   app.post("/api/olts", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
