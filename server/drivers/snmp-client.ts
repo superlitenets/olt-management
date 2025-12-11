@@ -110,8 +110,15 @@ const HUAWEI_OIDS = {
   ifOutOctets: "1.3.6.1.2.1.2.2.1.16",                 // Outbound traffic
   ifAlias: "1.3.6.1.2.1.31.1.1.1.18",                  // Interface alias/name
   
-  // VLAN OIDs
-  vlanName: "1.3.6.1.4.1.2011.5.6.1.1.1.1.2",         // hwVlanName
+  // VLAN OIDs - multiple tables for different models
+  vlanName: "1.3.6.1.4.1.2011.5.6.1.1.1.1.2",         // hwVlanName (older models)
+  vlanName2: "1.3.6.1.4.1.2011.5.14.5.1.1.2",        // hwVlanMIBTable (newer MA5600T)
+  vlanRowStatus: "1.3.6.1.4.1.2011.5.6.1.1.1.1.5",   // hwVlanRowStatus
+  // Q-BRIDGE-MIB standard (fallback)
+  dot1qVlanStaticName: "1.3.6.1.2.1.17.7.1.4.3.1.1", // Standard VLAN names
+  dot1qVlanFdbId: "1.3.6.1.2.1.17.7.1.4.2.1.3",      // VLAN FDB IDs (existence check)
+  // Port-VLAN membership
+  vlanPortList: "1.3.6.1.4.1.2011.5.6.1.1.1.1.3",    // hwVlanPorts (bitmap)
   
   // PON port status
   ponPortStatus: "1.3.6.1.4.1.2011.6.128.1.1.2.21.1.7", // hwGponOltEthPortOperStatus
@@ -150,8 +157,14 @@ const ZTE_OIDS = {
   ifOutOctets: "1.3.6.1.2.1.2.2.1.16",
   ifAlias: "1.3.6.1.2.1.31.1.1.1.18",
   
-  // VLAN OIDs
-  vlanName: "1.3.6.1.4.1.3902.1082.500.6.1.1.1.2",
+  // VLAN OIDs - multiple tables for different models
+  vlanName: "1.3.6.1.4.1.3902.1082.500.6.1.1.1.2",   // ZTE VLAN name
+  vlanName2: "1.3.6.1.4.1.3902.1082.1.6.1.1.1.2",   // Alternative ZTE VLAN table
+  // Q-BRIDGE-MIB standard (fallback)
+  dot1qVlanStaticName: "1.3.6.1.2.1.17.7.1.4.3.1.1", // Standard VLAN names
+  dot1qVlanFdbId: "1.3.6.1.2.1.17.7.1.4.2.1.3",      // VLAN FDB IDs
+  // Port-VLAN membership
+  vlanPortList: "1.3.6.1.4.1.3902.1082.500.6.1.1.1.3", // ZTE VLAN ports
   
   // PON port status
   ponPortStatus: "1.3.6.1.4.1.3902.1082.500.20.2.2.1.4",
@@ -981,9 +994,14 @@ export class OltSnmpClient {
       });
       console.log(`[SNMP] Found ${info.uplinks.length} uplink ports`);
 
-      // Get VLAN information
-      console.log(`[SNMP] Walking VLAN table...`);
+      // Get VLAN information - try multiple OID sources
+      console.log(`[SNMP] Walking VLAN tables (trying multiple OIDs)...`);
+      
+      const vlanMap = new Map<number, { name: string; ports?: string[] }>();
+      
+      // Try primary vendor-specific VLAN table
       const vlanNames = await this.snmpClient.walk(this.oids.vlanName).catch(() => new Map());
+      console.log(`[SNMP] Primary VLAN table returned ${vlanNames.size} entries`);
       
       vlanNames.forEach((value, oid) => {
         const vlanId = parseInt(oid.split(".").pop() || "0");
@@ -993,14 +1011,72 @@ export class OltSnmpClient {
         } else {
           name = String(value);
         }
-        
         if (vlanId > 0 && vlanId < 4095) {
-          info.vlans.push({ vlanId, name: name || `VLAN${vlanId}` });
+          vlanMap.set(vlanId, { name: name || `VLAN${vlanId}` });
         }
       });
       
+      // Try secondary vendor-specific VLAN table if primary returned nothing
+      if (vlanMap.size === 0 && this.oids.vlanName2) {
+        console.log(`[SNMP] Trying secondary VLAN table...`);
+        const vlanNames2 = await this.snmpClient.walk(this.oids.vlanName2).catch(() => new Map());
+        console.log(`[SNMP] Secondary VLAN table returned ${vlanNames2.size} entries`);
+        
+        vlanNames2.forEach((value, oid) => {
+          const vlanId = parseInt(oid.split(".").pop() || "0");
+          let name = "";
+          if (Buffer.isBuffer(value)) {
+            name = value.toString("utf8").trim();
+          } else {
+            name = String(value);
+          }
+          if (vlanId > 0 && vlanId < 4095) {
+            vlanMap.set(vlanId, { name: name || `VLAN${vlanId}` });
+          }
+        });
+      }
+      
+      // Try standard Q-BRIDGE-MIB as fallback
+      if (vlanMap.size === 0 && this.oids.dot1qVlanStaticName) {
+        console.log(`[SNMP] Trying Q-BRIDGE-MIB VLAN table...`);
+        const stdVlanNames = await this.snmpClient.walk(this.oids.dot1qVlanStaticName).catch(() => new Map());
+        console.log(`[SNMP] Q-BRIDGE VLAN table returned ${stdVlanNames.size} entries`);
+        
+        stdVlanNames.forEach((value, oid) => {
+          const vlanId = parseInt(oid.split(".").pop() || "0");
+          let name = "";
+          if (Buffer.isBuffer(value)) {
+            name = value.toString("utf8").trim();
+          } else {
+            name = String(value);
+          }
+          if (vlanId > 0 && vlanId < 4095) {
+            vlanMap.set(vlanId, { name: name || `VLAN${vlanId}` });
+          }
+        });
+      }
+      
+      // If still no VLANs found, try to detect VLANs by FDB ID existence
+      if (vlanMap.size === 0 && this.oids.dot1qVlanFdbId) {
+        console.log(`[SNMP] Trying VLAN FDB ID detection...`);
+        const vlanFdbs = await this.snmpClient.walk(this.oids.dot1qVlanFdbId).catch(() => new Map());
+        console.log(`[SNMP] VLAN FDB table returned ${vlanFdbs.size} entries`);
+        
+        vlanFdbs.forEach((value, oid) => {
+          const vlanId = parseInt(oid.split(".").pop() || "0");
+          if (vlanId > 0 && vlanId < 4095 && !vlanMap.has(vlanId)) {
+            vlanMap.set(vlanId, { name: `VLAN${vlanId}` });
+          }
+        });
+      }
+      
+      // Convert map to array
+      vlanMap.forEach((data, vlanId) => {
+        info.vlans.push({ vlanId, name: data.name, ports: data.ports });
+      });
+      
       info.vlans.sort((a, b) => a.vlanId - b.vlanId);
-      console.log(`[SNMP] Found ${info.vlans.length} VLANs`);
+      console.log(`[SNMP] Found ${info.vlans.length} VLANs total`);
 
       // Get PON port info
       console.log(`[SNMP] Walking PON port tables...`);

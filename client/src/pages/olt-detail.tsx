@@ -106,6 +106,13 @@ export default function OltDetailPage() {
     acsPassword: "",
     acsPeriodicInformInterval: 3600,
   });
+  const [trunkDialogOpen, setTrunkDialogOpen] = useState(false);
+  const [selectedPort, setSelectedPort] = useState("");
+  const [trunkForm, setTrunkForm] = useState({
+    mode: "trunk" as "trunk" | "access" | "hybrid",
+    vlanList: "",
+    nativeVlan: "",
+  });
 
   const { data: olt, isLoading: oltLoading } = useQuery<Olt>({
     queryKey: ["/api/olts", oltId],
@@ -333,6 +340,29 @@ export default function OltDetailPage() {
       toast({
         title: "Failed to Update ACS Settings",
         description: error.message || "Could not update ACS settings",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const configureTrunkMutation = useMutation({
+    mutationFn: async (data: { port: string; mode: string; vlanList: number[]; nativeVlan?: number }) => {
+      return apiRequest("POST", `/api/olts/${oltId}/vlan-trunk`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/olts", oltId, "details"] });
+      setTrunkDialogOpen(false);
+      setSelectedPort("");
+      setTrunkForm({ mode: "trunk", vlanList: "", nativeVlan: "" });
+      toast({
+        title: "Trunk Configured",
+        description: `VLAN trunk has been configured on the port`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to Configure Trunk",
+        description: error.message || "Could not configure VLAN trunk",
         variant: "destructive",
       });
     },
@@ -599,14 +629,13 @@ export default function OltDetailPage() {
                       </Button>
                       <Button
                         onClick={() => {
-                          const data = {
+                          updateAcsSettingsMutation.mutate({
                             acsEnabled: acsForm.acsEnabled,
-                            acsUrl: acsForm.acsUrl || null,
-                            acsUsername: acsForm.acsUsername || null,
-                            acsPassword: acsForm.acsPassword || null,
+                            acsUrl: acsForm.acsUrl || "",
+                            acsUsername: acsForm.acsUsername || "",
+                            acsPassword: acsForm.acsPassword || "",
                             acsPeriodicInformInterval: acsForm.acsPeriodicInformInterval,
-                          };
-                          updateAcsSettingsMutation.mutate(data);
+                          });
                         }}
                         disabled={updateAcsSettingsMutation.isPending}
                         data-testid="button-save-acs"
@@ -957,11 +986,12 @@ export default function OltDetailPage() {
                           <th className="text-left py-2 px-3 font-medium">Name</th>
                           <th className="text-left py-2 px-3 font-medium">Status</th>
                           <th className="text-left py-2 px-3 font-medium">Speed</th>
+                          <th className="text-left py-2 px-3 font-medium">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
                         {oltDetails.uplinks.map((uplink, idx) => (
-                          <tr key={idx} className="border-b last:border-0">
+                          <tr key={idx} className="border-b last:border-0" data-testid={`uplink-row-${idx}`}>
                             <td className="py-2 px-3 font-mono text-xs">{uplink.port}</td>
                             <td className="py-2 px-3">{uplink.name}</td>
                             <td className="py-2 px-3">
@@ -970,6 +1000,21 @@ export default function OltDetailPage() {
                               </Badge>
                             </td>
                             <td className="py-2 px-3 font-mono">{uplink.speed || "-"}</td>
+                            <td className="py-2 px-3">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setSelectedPort(uplink.port);
+                                  setTrunkForm({ mode: "trunk", vlanList: "", nativeVlan: "" });
+                                  setTrunkDialogOpen(true);
+                                }}
+                                data-testid={`button-configure-trunk-${idx}`}
+                              >
+                                <Settings className="h-3 w-3 mr-1" />
+                                Trunk
+                              </Button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -980,6 +1025,90 @@ export default function OltDetailPage() {
                     No uplink information available
                   </p>
                 )}
+                
+                <Dialog open={trunkDialogOpen} onOpenChange={setTrunkDialogOpen}>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Configure VLAN Trunk</DialogTitle>
+                      <DialogDescription>
+                        Configure VLAN trunking on port: <span className="font-mono">{selectedPort}</span>
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label>Port Mode</Label>
+                        <Select
+                          value={trunkForm.mode}
+                          onValueChange={(value: "trunk" | "access" | "hybrid") => 
+                            setTrunkForm({ ...trunkForm, mode: value })
+                          }
+                        >
+                          <SelectTrigger data-testid="select-trunk-mode">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="trunk">Trunk (Tagged)</SelectItem>
+                            <SelectItem value="access">Access (Untagged)</SelectItem>
+                            <SelectItem value="hybrid">Hybrid</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="trunk-vlans">VLANs (comma-separated)</Label>
+                        <Input
+                          id="trunk-vlans"
+                          placeholder="100, 200, 300"
+                          value={trunkForm.vlanList}
+                          onChange={(e) => setTrunkForm({ ...trunkForm, vlanList: e.target.value })}
+                          data-testid="input-trunk-vlans"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="native-vlan">Native/PVID VLAN (Optional)</Label>
+                        <Input
+                          id="native-vlan"
+                          type="number"
+                          min="1"
+                          max="4094"
+                          placeholder="1"
+                          value={trunkForm.nativeVlan}
+                          onChange={(e) => setTrunkForm({ ...trunkForm, nativeVlan: e.target.value })}
+                          data-testid="input-native-vlan"
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setTrunkDialogOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          const vlanList = trunkForm.vlanList
+                            .split(",")
+                            .map(v => parseInt(v.trim(), 10))
+                            .filter(v => !isNaN(v) && v >= 1 && v <= 4094);
+                          const nativeVlan = trunkForm.nativeVlan 
+                            ? parseInt(trunkForm.nativeVlan, 10) 
+                            : undefined;
+                          
+                          configureTrunkMutation.mutate({
+                            port: selectedPort,
+                            mode: trunkForm.mode,
+                            vlanList,
+                            nativeVlan: nativeVlan && !isNaN(nativeVlan) ? nativeVlan : undefined,
+                          });
+                        }}
+                        disabled={configureTrunkMutation.isPending}
+                        data-testid="button-apply-trunk"
+                      >
+                        {configureTrunkMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : null}
+                        Apply Configuration
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </TabsContent>
 
               <TabsContent value="vlans" className="mt-4">

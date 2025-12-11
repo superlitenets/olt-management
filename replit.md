@@ -82,9 +82,15 @@ A comprehensive OLT (Optical Line Terminal) Management System for multi-vendor G
 - `GET /api/olts` - List all OLTs
 - `POST /api/olts` - Create OLT
 - `GET /api/olts/:id` - Get OLT details
+- `GET /api/olts/:id/details` - Get detailed OLT info (boards, uplinks, VLANs, PON ports via SNMP)
 - `PATCH /api/olts/:id` - Update OLT
 - `DELETE /api/olts/:id` - Delete OLT
 - `POST /api/olts/:id/poll` - Poll OLT via SNMP (CPU, memory, temperature, ONU count)
+- `POST /api/olts/:id/vlans` - Create VLAN on OLT via CLI
+- `DELETE /api/olts/:id/vlans/:vlanId` - Delete VLAN from OLT via CLI
+- `POST /api/olts/:id/vlan-trunk` - Configure VLAN trunk on uplink port
+- `POST /api/olts/:id/save-config` - Save OLT configuration
+- `PATCH /api/olts/:id/acs-settings` - Update TR-069/ACS settings
 
 ### ONU Management
 - `GET /api/onus` - List all ONUs
@@ -183,6 +189,9 @@ The system supports two authentication methods:
 - Consistent spacing and typography
 
 ## Recent Changes
+- December 2025: Enhanced OLT Hardware Details - Real-time SNMP discovery of boards, uplinks, VLANs, PON ports with multiple OID fallbacks for different OLT models
+- December 2025: Added VLAN management via CLI - Create/delete VLANs and configure VLAN trunks on uplink ports (trunk, access, hybrid modes)
+- December 2025: Added TR-069/ACS configuration UI - Edit ACS settings (URL, credentials, periodic inform) directly from OLT detail page
 - December 2025: Added TR-069/ACS zero-touch provisioning - OLTs can store ACS settings and push them to ONUs via OMCI
 - December 2025: Added ONU-TR069 integration with device linking and quick actions (WiFi, VoIP, reboot)
 - December 2025: Added TR-069/ACS server with full CWMP support

@@ -817,6 +817,66 @@ export async function registerRoutes(
     }
   });
 
+  // Configure VLAN trunk on port
+  app.post("/api/olts/:id/vlan-trunk", isAuthenticated, async (req, res) => {
+    try {
+      const olt = await storage.getOlt(req.params.id);
+      if (!olt) {
+        return res.status(404).json({ message: "OLT not found" });
+      }
+
+      // Strict validation to prevent command injection
+      // Port names must match vendor-specific patterns (alphanumeric, slashes, underscores only)
+      const portPattern = /^[a-zA-Z0-9_\/\-\.]+$/;
+      
+      const trunkSchema = z.object({
+        port: z.string()
+          .min(1)
+          .max(50)
+          .regex(portPattern, "Invalid port name format. Only alphanumeric characters, slashes, underscores, dots and hyphens are allowed."),
+        vlanList: z.array(z.number().int().min(1).max(4094)).max(100),
+        nativeVlan: z.number().int().min(1).max(4094).optional(),
+        mode: z.enum(["trunk", "access", "hybrid"]).optional().default("trunk"),
+      });
+
+      const config = trunkSchema.parse(req.body);
+      
+      // Additional sanitization - remove any potential control characters
+      const sanitizedPort = config.port.replace(/[\x00-\x1F\x7F]/g, "");
+      if (sanitizedPort !== config.port) {
+        return res.status(400).json({ message: "Invalid characters in port name" });
+      }
+      config.port = sanitizedPort;
+
+      const { createOltDriver } = await import("./drivers/olt-driver");
+      const driver = createOltDriver(olt, false);
+      const result = await driver.configureVlanTrunk(config);
+
+      if (result.success) {
+        res.json({ 
+          success: true, 
+          message: `VLAN trunk configured on port ${config.port}`,
+          commands: result.commands 
+        });
+      } else {
+        res.status(500).json({ 
+          success: false, 
+          message: result.message,
+          error: result.error 
+        });
+      }
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid trunk configuration", errors: error.errors });
+      }
+      console.error("Error configuring VLAN trunk:", error);
+      res.status(500).json({ 
+        message: "Failed to configure VLAN trunk",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
   // Update OLT TR-069/ACS settings
   app.patch("/api/olts/:id/acs-settings", isAuthenticated, async (req, res) => {
     try {

@@ -33,6 +33,13 @@ export interface VlanConfig {
   description?: string;
 }
 
+export interface VlanTrunkConfig {
+  port: string;       // e.g., "0/0/1" for Huawei, "gei_1/1/1" for ZTE
+  vlanList: number[]; // List of VLAN IDs to allow on the trunk
+  nativeVlan?: number; // PVID/native VLAN
+  mode?: "trunk" | "access" | "hybrid"; // Port mode
+}
+
 export abstract class OltDriver {
   protected olt: Olt;
   protected simulationMode: boolean;
@@ -52,6 +59,7 @@ export abstract class OltDriver {
   abstract buildCreateVlanCommands(vlan: VlanConfig): string[];
   abstract buildDeleteVlanCommands(vlanId: number): string[];
   abstract buildSaveConfigCommands(): string[];
+  abstract buildTrunkVlanCommands(config: VlanTrunkConfig): string[];
 
   async executeCommands(commands: string[]): Promise<OltDriverResult> {
     if (this.simulationMode) {
@@ -169,6 +177,11 @@ export abstract class OltDriver {
 
   async saveConfig(): Promise<OltDriverResult> {
     const commands = this.buildSaveConfigCommands();
+    return this.executeCommands(commands);
+  }
+
+  async configureVlanTrunk(config: VlanTrunkConfig): Promise<OltDriverResult> {
+    const commands = this.buildTrunkVlanCommands(config);
     return this.executeCommands(commands);
   }
 }
@@ -346,6 +359,42 @@ export class HuaweiOltDriver extends OltDriver {
       "y",
     ];
   }
+
+  buildTrunkVlanCommands(config: VlanTrunkConfig): string[] {
+    const commands = [
+      "enable",
+      "config",
+      `interface ${config.port}`,
+    ];
+    
+    // Set port mode
+    if (config.mode === "trunk") {
+      commands.push("port link-type trunk");
+      if (config.vlanList.length > 0) {
+        commands.push(`port trunk allow-pass vlan ${config.vlanList.join(" ")}`);
+      }
+      if (config.nativeVlan) {
+        commands.push(`port trunk pvid vlan ${config.nativeVlan}`);
+      }
+    } else if (config.mode === "hybrid") {
+      commands.push("port link-type hybrid");
+      if (config.vlanList.length > 0) {
+        commands.push(`port hybrid tagged vlan ${config.vlanList.join(" ")}`);
+      }
+      if (config.nativeVlan) {
+        commands.push(`port hybrid untagged vlan ${config.nativeVlan}`);
+        commands.push(`port hybrid pvid vlan ${config.nativeVlan}`);
+      }
+    } else if (config.mode === "access") {
+      commands.push("port link-type access");
+      if (config.nativeVlan) {
+        commands.push(`port default vlan ${config.nativeVlan}`);
+      }
+    }
+    
+    commands.push("quit", "quit");
+    return commands;
+  }
 }
 
 export class ZteOltDriver extends OltDriver {
@@ -521,6 +570,41 @@ export class ZteOltDriver extends OltDriver {
       "enable",
       "write",
     ];
+  }
+
+  buildTrunkVlanCommands(config: VlanTrunkConfig): string[] {
+    const commands = [
+      "enable",
+      "configure terminal",
+      `interface ${config.port}`,
+    ];
+    
+    // Set port mode
+    if (config.mode === "trunk") {
+      commands.push("switchport mode trunk");
+      if (config.vlanList.length > 0) {
+        commands.push(`switchport trunk vlan-allowed add ${config.vlanList.join(",")}`);
+      }
+      if (config.nativeVlan) {
+        commands.push(`switchport trunk native vlan ${config.nativeVlan}`);
+      }
+    } else if (config.mode === "hybrid") {
+      commands.push("switchport mode hybrid");
+      if (config.vlanList.length > 0) {
+        commands.push(`switchport hybrid vlan-allowed add ${config.vlanList.join(",")} tagged`);
+      }
+      if (config.nativeVlan) {
+        commands.push(`switchport hybrid native vlan ${config.nativeVlan}`);
+      }
+    } else if (config.mode === "access") {
+      commands.push("switchport mode access");
+      if (config.nativeVlan) {
+        commands.push(`switchport access vlan ${config.nativeVlan}`);
+      }
+    }
+    
+    commands.push("exit", "exit");
+    return commands;
   }
 }
 
