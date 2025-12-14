@@ -345,17 +345,19 @@ export default function VpnPage() {
         </CardHeader>
         <CardContent>
           {profilesLoading ? (
-            <TableSkeleton columns={5} rows={5} />
+            <TableSkeleton rows={5} />
           ) : !filteredProfiles?.length ? (
             <EmptyState
-              icon={Shield}
+              icon={<Shield className="h-8 w-8" />}
               title="No VPN Profiles"
               description="Create an OpenVPN profile to enable secure OLT connections"
-              actionLabel="Add Profile"
-              onAction={() => {
-                setEditingProfile(null);
-                resetProfileForm();
-                setProfileDialogOpen(true);
+              action={{
+                label: "Add Profile",
+                onClick: () => {
+                  setEditingProfile(null);
+                  resetProfileForm();
+                  setProfileDialogOpen(true);
+                },
               }}
             />
           ) : (
