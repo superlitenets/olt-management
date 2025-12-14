@@ -105,28 +105,6 @@ export default function Landing() {
           </div>
         </section>
 
-        <section className="py-16 px-4">
-          <div className="container mx-auto">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-              <div>
-                <div className="text-3xl md:text-4xl font-bold text-primary mb-1">99.9%</div>
-                <div className="text-sm text-muted-foreground">Uptime SLA</div>
-              </div>
-              <div>
-                <div className="text-3xl md:text-4xl font-bold text-primary mb-1">1M+</div>
-                <div className="text-sm text-muted-foreground">ONUs Managed</div>
-              </div>
-              <div>
-                <div className="text-3xl md:text-4xl font-bold text-primary mb-1">50+</div>
-                <div className="text-sm text-muted-foreground">ISP Partners</div>
-              </div>
-              <div>
-                <div className="text-3xl md:text-4xl font-bold text-primary mb-1">24/7</div>
-                <div className="text-sm text-muted-foreground">Support</div>
-              </div>
-            </div>
-          </div>
-        </section>
 
         <section className="py-16 px-4 bg-muted/50">
           <div className="container mx-auto text-center max-w-2xl">

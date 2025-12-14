@@ -5,37 +5,7 @@ import { StatCard } from "@/components/stat-card";
 import { DashboardSkeleton } from "@/components/loading-skeleton";
 import { Activity, Server, Radio, Thermometer, Cpu, HardDrive, Wifi } from "lucide-react";
 import type { Olt, Onu } from "@shared/schema";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  BarChart,
-  Bar,
-} from "recharts";
 
-const trafficData = [
-  { time: "00:00", download: 45, upload: 12 },
-  { time: "04:00", download: 32, upload: 8 },
-  { time: "08:00", download: 78, upload: 25 },
-  { time: "12:00", download: 95, upload: 38 },
-  { time: "16:00", download: 120, upload: 45 },
-  { time: "20:00", download: 145, upload: 52 },
-  { time: "Now", download: 98, upload: 35 },
-];
-
-const signalDistribution = [
-  { range: "-15 to -20", count: 45 },
-  { range: "-20 to -25", count: 120 },
-  { range: "-25 to -27", count: 85 },
-  { range: "-27 to -28", count: 35 },
-  { range: "< -28", count: 15 },
-];
 
 export default function MonitoringPage() {
   const { data: olts, isLoading: oltsLoading } = useQuery<Olt[]>({
@@ -133,57 +103,10 @@ export default function MonitoringPage() {
             <CardTitle className="text-base font-medium">Network Traffic</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={trafficData}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis
-                    dataKey="time"
-                    tick={{ fontSize: 12 }}
-                    className="text-muted-foreground"
-                  />
-                  <YAxis
-                    tick={{ fontSize: 12 }}
-                    className="text-muted-foreground"
-                    tickFormatter={(value) => `${value} Gbps`}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(var(--popover))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: "6px",
-                    }}
-                    formatter={(value: number, name: string) => [
-                      `${value} Gbps`,
-                      name === "download" ? "Download" : "Upload",
-                    ]}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="download"
-                    stroke="hsl(var(--chart-1))"
-                    fill="hsl(var(--chart-1) / 0.2)"
-                    strokeWidth={2}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="upload"
-                    stroke="hsl(var(--chart-2))"
-                    fill="hsl(var(--chart-2) / 0.2)"
-                    strokeWidth={2}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="flex justify-center gap-6 mt-2">
-              <div className="flex items-center gap-2 text-xs">
-                <span className="h-2 w-2 rounded-full bg-[hsl(var(--chart-1))]" />
-                Download
-              </div>
-              <div className="flex items-center gap-2 text-xs">
-                <span className="h-2 w-2 rounded-full bg-[hsl(var(--chart-2))]" />
-                Upload
-              </div>
+            <div className="h-72 flex items-center justify-center">
+              <p className="text-muted-foreground text-sm text-center">
+                Traffic data will appear here once OLTs are polled
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -193,44 +116,11 @@ export default function MonitoringPage() {
             <CardTitle className="text-base font-medium">Signal Distribution</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={signalDistribution}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis
-                    dataKey="range"
-                    tick={{ fontSize: 10 }}
-                    className="text-muted-foreground"
-                  />
-                  <YAxis
-                    tick={{ fontSize: 12 }}
-                    className="text-muted-foreground"
-                    label={{
-                      value: "ONUs",
-                      angle: -90,
-                      position: "insideLeft",
-                      style: { fontSize: 12 },
-                    }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(var(--popover))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: "6px",
-                    }}
-                    formatter={(value: number) => [`${value} ONUs`, "Count"]}
-                  />
-                  <Bar
-                    dataKey="count"
-                    fill="hsl(var(--primary))"
-                    radius={[4, 4, 0, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="h-72 flex items-center justify-center">
+              <p className="text-muted-foreground text-sm text-center">
+                Signal distribution will appear here once ONUs are polled
+              </p>
             </div>
-            <p className="text-xs text-muted-foreground text-center mt-2">
-              RX Power Distribution (dBm)
-            </p>
           </CardContent>
         </Card>
       </div>
