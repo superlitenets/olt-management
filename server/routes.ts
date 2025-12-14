@@ -75,6 +75,15 @@ export async function registerRoutes(
     });
   };
 
+  // Auth config - expose whether Replit Auth is available
+  app.get("/api/auth/config", (req, res) => {
+    const { isReplitEnvironment } = require("./replitAuth");
+    res.json({ 
+      replitAuthEnabled: isReplitEnvironment(),
+      localAuthEnabled: true 
+    });
+  });
+
   // Auth routes
   app.get("/api/auth/user", isAuthenticated, async (req: any, res) => {
     try {

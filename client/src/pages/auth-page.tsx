@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -34,6 +34,11 @@ export default function AuthPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("login");
+  
+  // Check if Replit Auth is available
+  const { data: authConfig } = useQuery<{ replitAuthEnabled: boolean; localAuthEnabled: boolean }>({
+    queryKey: ["/api/auth/config"],
+  });
 
   const loginForm = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -139,24 +144,28 @@ export default function AuthPage() {
             <CardDescription>Sign in to access the OLT management system</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <Button
-              variant="outline"
-              className="w-full gap-2"
-              onClick={handleReplitLogin}
-              data-testid="button-replit-login"
-            >
-              <SiReplit className="h-4 w-4" />
-              Continue with Replit
-            </Button>
+            {authConfig?.replitAuthEnabled && (
+              <>
+                <Button
+                  variant="outline"
+                  className="w-full gap-2"
+                  onClick={handleReplitLogin}
+                  data-testid="button-replit-login"
+                >
+                  <SiReplit className="h-4 w-4" />
+                  Continue with Replit
+                </Button>
 
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-2 text-muted-foreground">Or use local account</span>
-              </div>
-            </div>
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground">Or</span>
+                  </div>
+                </div>
+              </>
+            )}
 
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="grid w-full grid-cols-2">
