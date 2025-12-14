@@ -53,6 +53,20 @@ A comprehensive OLT (Optical Line Terminal) Management System for multi-vendor G
 - Tenant isolation
 - Role-based access control (Super Admin, Tenant Admin, Operator)
 
+### 6. OpenVPN Integration
+- VPN profiles management for secure OLT connections
+- Location: `server/vpn/vpn-manager.ts`
+- Environment detection (Replit vs Docker/local)
+- Features:
+  - Store and manage OpenVPN (.ovpn) configurations
+  - Associate VPN profiles with OLTs
+  - Connect/disconnect VPN tunnels (Docker/local only)
+  - Automatic environment detection with informative messaging
+- Requirements for VPN connections (Docker deployment):
+  - `--cap-add=NET_ADMIN` for network capabilities
+  - `--device=/dev/net/tun` for TUN device access
+  - OpenVPN package installed
+
 ## Database Schema
 
 ### Core Tables
@@ -70,6 +84,9 @@ A comprehensive OLT (Optical Line Terminal) Management System for multi-vendor G
 - `tr069_tasks` - Pending/completed device tasks
 - `tr069_presets` - Auto-configuration presets
 - `tr069_firmware` - Firmware images for upgrades
+
+### VPN Tables
+- `vpn_profiles` - OpenVPN configuration profiles for OLT connectivity
 
 ## API Routes
 
@@ -118,6 +135,14 @@ A comprehensive OLT (Optical Line Terminal) Management System for multi-vendor G
 - `GET /api/tr069/presets` - List presets
 - `POST /api/tr069/presets` - Create preset
 - `GET /api/tr069/firmware` - List firmware images
+
+### VPN Management
+- `GET /api/vpn-profiles` - List all VPN profiles
+- `POST /api/vpn-profiles` - Create VPN profile
+- `GET /api/vpn-profiles/:id` - Get VPN profile details
+- `PATCH /api/vpn-profiles/:id` - Update VPN profile
+- `DELETE /api/vpn-profiles/:id` - Delete VPN profile
+- `GET /api/vpn/environment` - Check VPN environment capabilities
 
 ### Other Endpoints
 - `GET/POST /api/service-profiles`
@@ -212,6 +237,7 @@ VoIP/SIP Configuration:
 - `Device.Services.VoiceService.1.VoiceProfile.1.Line.{n}.SIP.AuthPassword` - SIP password
 
 ## Recent Changes
+- December 2025: Added OpenVPN integration - VPN profiles management for secure OLT connections with environment detection (Replit vs Docker/local deployment)
 - December 2025: Added TR-069 parameters viewer/editor with type selector (String, Integer, Boolean) for inline editing
 - December 2025: Added TR-069 WiFi configuration dialog with SSID, password, security mode, channel settings
 - December 2025: Added TR-069 VoIP/SIP configuration dialog with server, credentials, line settings
