@@ -2300,6 +2300,18 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
     }
   });
 
+  // Get VPN environment info (whether VPN is available in this environment)
+  app.get("/api/vpn/environment", isAuthenticated, async (req, res) => {
+    try {
+      const { vpnManager } = await import("./vpn/vpn-manager");
+      const envInfo = await vpnManager.detectEnvironment();
+      res.json(envInfo);
+    } catch (error) {
+      console.error("Error getting VPN environment:", error);
+      res.status(500).json({ message: "Failed to get VPN environment info" });
+    }
+  });
+
   // Test VPN profile connection (shows environment limitation message on Replit)
   app.post("/api/vpn/profiles/:id/test", isAuthenticated, async (req, res) => {
     try {
