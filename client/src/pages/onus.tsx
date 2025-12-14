@@ -1458,7 +1458,7 @@ export default function OnusPage() {
                 <span>{previewCommands.commands.length} commands would be sent to the OLT</span>
               </div>
               <p className="text-xs text-muted-foreground">
-                Note: This is running in simulation mode. In production, these commands would be sent to the OLT via SSH.
+                Note: These commands will be sent to the OLT via SSH when executed.
               </p>
             </div>
           )}

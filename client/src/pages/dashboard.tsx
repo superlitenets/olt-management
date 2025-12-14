@@ -36,16 +36,6 @@ interface DashboardStats {
   avgRxPower: number | null;
 }
 
-// Placeholder signal chart data - will be replaced with historical data from ONU events
-const signalChartData = [
-  { time: "00:00", signal: -24.5 },
-  { time: "04:00", signal: -24.2 },
-  { time: "08:00", signal: -25.1 },
-  { time: "12:00", signal: -24.8 },
-  { time: "16:00", signal: -25.3 },
-  { time: "20:00", signal: -24.7 },
-  { time: "Now", signal: -24.9 },
-];
 
 export default function Dashboard() {
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useQuery<DashboardStats>({
@@ -209,39 +199,12 @@ export default function Dashboard() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={signalChartData}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis
-                    dataKey="time"
-                    tick={{ fontSize: 12 }}
-                    className="text-muted-foreground"
-                  />
-                  <YAxis
-                    domain={[-30, -20]}
-                    tick={{ fontSize: 12 }}
-                    className="text-muted-foreground"
-                    tickFormatter={(value) => `${value}`}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(var(--popover))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: "6px",
-                    }}
-                    formatter={(value: number) => [`${value} dBm`, "RX Power"]}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="signal"
-                    stroke="hsl(var(--primary))"
-                    strokeWidth={2}
-                    dot={{ fill: "hsl(var(--primary))", r: 4 }}
-                    activeDot={{ r: 6 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+            <div className="h-64 flex items-center justify-center">
+              <div className="text-center text-muted-foreground">
+                <Activity className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                <p className="text-sm">Signal data will appear here</p>
+                <p className="text-xs">as ONUs are polled and monitored</p>
+              </div>
             </div>
           </CardContent>
         </Card>
