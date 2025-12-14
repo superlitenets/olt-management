@@ -106,6 +106,7 @@ export const olts = pgTable("olts", {
   acsPeriodicInformInterval: integer("acs_periodic_inform_interval").default(3600),
   autoProvisionEnabled: boolean("auto_provision_enabled").default(false),
   autoProvisionServiceProfileId: varchar("auto_provision_service_profile_id"),
+  vpnProfileId: varchar("vpn_profile_id"), // Link to VPN profile for reaching this OLT
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -529,6 +530,23 @@ export const tr069FirmwareRelations = relations(tr069Firmware, ({ one }) => ({
 export const vpnTypeEnum = pgEnum("vpn_type", ["wireguard", "openvpn", "ipsec", "ssh_tunnel"]);
 export const vpnStatusEnum = pgEnum("vpn_status", ["connected", "disconnected", "connecting", "error"]);
 
+// OpenVPN Profiles - Store .ovpn configurations for connecting to OLTs
+export const vpnProfiles = pgTable("vpn_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  ovpnConfig: text("ovpn_config").notNull(), // The .ovpn file content
+  username: varchar("username", { length: 255 }), // Optional auth username
+  password: varchar("password", { length: 255 }), // Optional auth password
+  status: vpnStatusEnum("status").default("disconnected"),
+  lastConnected: timestamp("last_connected"),
+  lastError: text("last_error"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // VPN Gateways - VPN endpoints/concentrators per tenant
 export const vpnGateways = pgTable("vpn_gateways", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -575,6 +593,14 @@ export const vpnTunnels = pgTable("vpn_tunnels", {
 });
 
 // VPN Relations
+export const vpnProfilesRelations = relations(vpnProfiles, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [vpnProfiles.tenantId],
+    references: [tenants.id],
+  }),
+  olts: many(olts),
+}));
+
 export const vpnGatewaysRelations = relations(vpnGateways, ({ one, many }) => ({
   tenant: one(tenants, {
     fields: [vpnGateways.tenantId],
@@ -609,6 +635,15 @@ export const insertVpnTunnelSchema = createInsertSchema(vpnTunnels).omit({
   lastHandshake: true,
   bytesReceived: true,
   bytesSent: true,
+});
+
+export const insertVpnProfileSchema = createInsertSchema(vpnProfiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastConnected: true,
+  status: true,
+  lastError: true,
 });
 
 // TR-069 Insert Schemas
@@ -682,3 +717,6 @@ export type InsertVpnGateway = z.infer<typeof insertVpnGatewaySchema>;
 
 export type VpnTunnel = typeof vpnTunnels.$inferSelect;
 export type InsertVpnTunnel = z.infer<typeof insertVpnTunnelSchema>;
+
+export type VpnProfile = typeof vpnProfiles.$inferSelect;
+export type InsertVpnProfile = z.infer<typeof insertVpnProfileSchema>;
