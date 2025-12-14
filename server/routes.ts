@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated } from "./replitAuth";
+import { setupAuth, isAuthenticated, isReplitEnvironment } from "./replitAuth";
 import { setupLocalAuth } from "./localAuth";
 import {
   insertOltSchema,
@@ -77,7 +77,6 @@ export async function registerRoutes(
 
   // Auth config - expose whether Replit Auth is available
   app.get("/api/auth/config", (req, res) => {
-    const { isReplitEnvironment } = require("./replitAuth");
     res.json({ 
       replitAuthEnabled: isReplitEnvironment(),
       localAuthEnabled: true 

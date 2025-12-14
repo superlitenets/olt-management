@@ -89,12 +89,27 @@ export default function OnusPage() {
   const [selectedOnuIds, setSelectedOnuIds] = useState<Set<string>>(new Set());
   const [wifiDialogOpen, setWifiDialogOpen] = useState(false);
   const [voipDialogOpen, setVoipDialogOpen] = useState(false);
+  const [wifiBandTab, setWifiBandTab] = useState<"2.4ghz" | "5ghz">("2.4ghz");
   const [wifiConfig, setWifiConfig] = useState({
-    ssid: "",
-    password: "",
-    securityMode: "WPA2-Personal",
-    channel: "auto",
-    enabled: true,
+    // 2.4GHz band (Radio.1, SSID.1)
+    ssid_2g: "",
+    password_2g: "",
+    securityMode_2g: "WPA2-Personal",
+    channel_2g: "auto",
+    enabled_2g: true,
+    bandwidth_2g: "20MHz",
+    // 5GHz band (Radio.2, SSID.2)
+    ssid_5g: "",
+    password_5g: "",
+    securityMode_5g: "WPA2-Personal",
+    channel_5g: "auto",
+    enabled_5g: true,
+    bandwidth_5g: "80MHz",
+    // Guest network (SSID.3)
+    ssid_guest: "",
+    password_guest: "",
+    enabled_guest: false,
+    guestIsolation: true,
   });
   const [voipConfig, setVoipConfig] = useState({
     sipServer: "",
@@ -334,6 +349,82 @@ export default function OnusPage() {
       toast({
         title: "Error",
         description: error.message || "Failed to reboot ONU",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Comprehensive provisioning - combines OMCI (Layer 2) and TR-069 (Layer 3)
+  const fullProvisionMutation = useMutation({
+    mutationFn: async (onuId: string) => {
+      let omciData: { commands?: string[]; vendor?: string; error?: string } | null = null;
+      let tr069Data: { commands?: string[]; vendor?: string; error?: string } | null = null;
+      let omciError: string | null = null;
+      let tr069Error: string | null = null;
+      
+      // First, run OMCI provisioning (Layer 2: VLAN, GEM ports)
+      try {
+        const omciRes = await apiRequest("POST", `/api/onus/${onuId}/provision`);
+        omciData = await omciRes.json() as { commands?: string[]; vendor?: string };
+      } catch (err) {
+        omciError = err instanceof Error ? err.message : "OMCI provisioning failed";
+      }
+      
+      // Then, run TR-069 provisioning (Layer 3: ACS settings) - even if OMCI failed
+      try {
+        const tr069Res = await apiRequest("POST", `/api/onus/${onuId}/provision-tr069`);
+        tr069Data = await tr069Res.json() as { commands?: string[]; vendor?: string };
+      } catch (err) {
+        tr069Error = err instanceof Error ? err.message : "TR-069 provisioning failed";
+      }
+      
+      return {
+        omci: omciData,
+        tr069: tr069Data,
+        omciError,
+        tr069Error,
+        omciSuccess: !omciError,
+        tr069Success: !tr069Error,
+        totalCommands: (omciData?.commands?.length || 0) + (tr069Data?.commands?.length || 0)
+      };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onus"] });
+      
+      // Handle partial failures with detailed feedback
+      if (data.omciSuccess && data.tr069Success) {
+        toast({
+          title: "Full Provisioning Complete",
+          description: `${data.totalCommands} commands sent (OMCI: ${data.omci?.commands?.length || 0}, TR-069: ${data.tr069?.commands?.length || 0})`,
+        });
+      } else if (data.omciSuccess && !data.tr069Success) {
+        toast({
+          title: "Partial Provisioning",
+          description: `OMCI succeeded (${data.omci?.commands?.length || 0} commands), but TR-069 failed: ${data.tr069Error}`,
+          variant: "destructive",
+        });
+      } else if (!data.omciSuccess && data.tr069Success) {
+        toast({
+          title: "Partial Provisioning",
+          description: `OMCI failed: ${data.omciError}, but TR-069 succeeded (${data.tr069?.commands?.length || 0} commands)`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Provisioning Failed",
+          description: `OMCI: ${data.omciError}. TR-069: ${data.tr069Error}`,
+          variant: "destructive",
+        });
+      }
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        window.location.href = "/api/login";
+        return;
+      }
+      toast({
+        title: "Provisioning Error",
+        description: error.message || "Failed to complete full provisioning",
         variant: "destructive",
       });
     },
@@ -781,20 +872,28 @@ export default function OnusPage() {
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
+                              onClick={() => fullProvisionMutation.mutate(onu.id)}
+                              disabled={fullProvisionMutation.isPending}
+                              data-testid={`button-full-provision-${onu.id}`}
+                            >
+                              <Zap className="h-4 w-4 mr-2" />
+                              Full Provisioning (OMCI + TR-069)
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
                               onClick={() => provisionOnuMutation.mutate(onu.id)}
                               disabled={provisionOnuMutation.isPending}
                               data-testid={`button-provision-${onu.id}`}
                             >
                               <Download className="h-4 w-4 mr-2" />
-                              Provision Service
+                              Provision Service (OMCI)
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => provisionTr069Mutation.mutate(onu.id)}
                               disabled={provisionTr069Mutation.isPending}
                               data-testid={`button-provision-tr069-${onu.id}`}
                             >
-                              <Zap className="h-4 w-4 mr-2" />
-                              Provision TR-069
+                              <Settings className="h-4 w-4 mr-2" />
+                              Provision TR-069 Only
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => rebootOnuMutation.mutate(onu.id)}
@@ -1144,12 +1243,24 @@ export default function OnusPage() {
                           className="flex flex-col items-center gap-2 h-auto py-4"
                           onClick={() => {
                             setWifiConfig({
-                              ssid: "",
-                              password: "",
-                              securityMode: "WPA2-Personal",
-                              channel: "auto",
-                              enabled: true,
+                              ssid_2g: "",
+                              password_2g: "",
+                              securityMode_2g: "WPA2-Personal",
+                              channel_2g: "auto",
+                              enabled_2g: true,
+                              bandwidth_2g: "20MHz",
+                              ssid_5g: "",
+                              password_5g: "",
+                              securityMode_5g: "WPA2-Personal",
+                              channel_5g: "auto",
+                              enabled_5g: true,
+                              bandwidth_5g: "80MHz",
+                              ssid_guest: "",
+                              password_guest: "",
+                              enabled_guest: false,
+                              guestIsolation: true,
                             });
+                            setWifiBandTab("2.4ghz");
                             setWifiDialogOpen(true);
                           }}
                           disabled={createTr069TaskMutation.isPending}
@@ -1360,111 +1471,334 @@ export default function OnusPage() {
       </Dialog>
 
       <Dialog open={wifiDialogOpen} onOpenChange={setWifiDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Wifi className="h-5 w-5" />
-              Configure WiFi
+              Configure WiFi (Dual-Band)
             </DialogTitle>
             <DialogDescription>
-              Configure wireless network settings for this ONU via TR-069
+              Configure 2.4GHz and 5GHz wireless networks via TR-069
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>SSID (Network Name)</Label>
-              <Input
-                value={wifiConfig.ssid}
-                onChange={(e) => setWifiConfig({ ...wifiConfig, ssid: e.target.value })}
-                placeholder="Enter WiFi network name"
-                data-testid="input-wifi-ssid"
-              />
+          <Tabs value={wifiBandTab} onValueChange={(v) => setWifiBandTab(v as "2.4ghz" | "5ghz")} className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="2.4ghz" data-testid="tab-wifi-2g">
+                2.4 GHz
+                {wifiConfig.enabled_2g && <Badge variant="secondary" className="ml-2">On</Badge>}
+              </TabsTrigger>
+              <TabsTrigger value="5ghz" data-testid="tab-wifi-5g">
+                5 GHz
+                {wifiConfig.enabled_5g && <Badge variant="secondary" className="ml-2">On</Badge>}
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="2.4ghz" className="space-y-4 pt-4">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="wifi-enabled-2g"
+                  checked={wifiConfig.enabled_2g}
+                  onCheckedChange={(checked) => setWifiConfig({ ...wifiConfig, enabled_2g: !!checked })}
+                  data-testid="checkbox-wifi-enabled-2g"
+                />
+                <Label htmlFor="wifi-enabled-2g">Enable 2.4GHz Radio</Label>
+              </div>
+              <div className="space-y-2">
+                <Label>SSID (Network Name)</Label>
+                <Input
+                  value={wifiConfig.ssid_2g}
+                  onChange={(e) => setWifiConfig({ ...wifiConfig, ssid_2g: e.target.value })}
+                  placeholder="Enter 2.4GHz WiFi network name"
+                  data-testid="input-wifi-ssid-2g"
+                  disabled={!wifiConfig.enabled_2g}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Password</Label>
+                <Input
+                  type="password"
+                  value={wifiConfig.password_2g}
+                  onChange={(e) => setWifiConfig({ ...wifiConfig, password_2g: e.target.value })}
+                  placeholder="Min 8 characters"
+                  data-testid="input-wifi-password-2g"
+                  disabled={!wifiConfig.enabled_2g}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Security</Label>
+                  <Select
+                    value={wifiConfig.securityMode_2g}
+                    onValueChange={(value) => setWifiConfig({ ...wifiConfig, securityMode_2g: value })}
+                    disabled={!wifiConfig.enabled_2g}
+                  >
+                    <SelectTrigger data-testid="select-wifi-security-2g">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="WPA2-Personal">WPA2-Personal</SelectItem>
+                      <SelectItem value="WPA3-Personal">WPA3-Personal</SelectItem>
+                      <SelectItem value="WPA-WPA2-Personal">WPA/WPA2 Mixed</SelectItem>
+                      <SelectItem value="None">Open</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Channel</Label>
+                  <Select
+                    value={wifiConfig.channel_2g}
+                    onValueChange={(value) => setWifiConfig({ ...wifiConfig, channel_2g: value })}
+                    disabled={!wifiConfig.enabled_2g}
+                  >
+                    <SelectTrigger data-testid="select-wifi-channel-2g">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">Auto</SelectItem>
+                      <SelectItem value="1">1</SelectItem>
+                      <SelectItem value="6">6</SelectItem>
+                      <SelectItem value="11">11</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Bandwidth</Label>
+                <Select
+                  value={wifiConfig.bandwidth_2g}
+                  onValueChange={(value) => setWifiConfig({ ...wifiConfig, bandwidth_2g: value })}
+                  disabled={!wifiConfig.enabled_2g}
+                >
+                  <SelectTrigger data-testid="select-wifi-bandwidth-2g">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="20MHz">20 MHz</SelectItem>
+                    <SelectItem value="40MHz">40 MHz</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </TabsContent>
+            <TabsContent value="5ghz" className="space-y-4 pt-4">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="wifi-enabled-5g"
+                  checked={wifiConfig.enabled_5g}
+                  onCheckedChange={(checked) => setWifiConfig({ ...wifiConfig, enabled_5g: !!checked })}
+                  data-testid="checkbox-wifi-enabled-5g"
+                />
+                <Label htmlFor="wifi-enabled-5g">Enable 5GHz Radio</Label>
+              </div>
+              <div className="space-y-2">
+                <Label>SSID (Network Name)</Label>
+                <Input
+                  value={wifiConfig.ssid_5g}
+                  onChange={(e) => setWifiConfig({ ...wifiConfig, ssid_5g: e.target.value })}
+                  placeholder="Enter 5GHz WiFi network name"
+                  data-testid="input-wifi-ssid-5g"
+                  disabled={!wifiConfig.enabled_5g}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Password</Label>
+                <Input
+                  type="password"
+                  value={wifiConfig.password_5g}
+                  onChange={(e) => setWifiConfig({ ...wifiConfig, password_5g: e.target.value })}
+                  placeholder="Min 8 characters"
+                  data-testid="input-wifi-password-5g"
+                  disabled={!wifiConfig.enabled_5g}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Security</Label>
+                  <Select
+                    value={wifiConfig.securityMode_5g}
+                    onValueChange={(value) => setWifiConfig({ ...wifiConfig, securityMode_5g: value })}
+                    disabled={!wifiConfig.enabled_5g}
+                  >
+                    <SelectTrigger data-testid="select-wifi-security-5g">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="WPA2-Personal">WPA2-Personal</SelectItem>
+                      <SelectItem value="WPA3-Personal">WPA3-Personal</SelectItem>
+                      <SelectItem value="WPA-WPA2-Personal">WPA/WPA2 Mixed</SelectItem>
+                      <SelectItem value="None">Open</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Channel</Label>
+                  <Select
+                    value={wifiConfig.channel_5g}
+                    onValueChange={(value) => setWifiConfig({ ...wifiConfig, channel_5g: value })}
+                    disabled={!wifiConfig.enabled_5g}
+                  >
+                    <SelectTrigger data-testid="select-wifi-channel-5g">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">Auto</SelectItem>
+                      <SelectItem value="36">36</SelectItem>
+                      <SelectItem value="40">40</SelectItem>
+                      <SelectItem value="44">44</SelectItem>
+                      <SelectItem value="48">48</SelectItem>
+                      <SelectItem value="149">149</SelectItem>
+                      <SelectItem value="153">153</SelectItem>
+                      <SelectItem value="157">157</SelectItem>
+                      <SelectItem value="161">161</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Bandwidth</Label>
+                <Select
+                  value={wifiConfig.bandwidth_5g}
+                  onValueChange={(value) => setWifiConfig({ ...wifiConfig, bandwidth_5g: value })}
+                  disabled={!wifiConfig.enabled_5g}
+                >
+                  <SelectTrigger data-testid="select-wifi-bandwidth-5g">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="20MHz">20 MHz</SelectItem>
+                    <SelectItem value="40MHz">40 MHz</SelectItem>
+                    <SelectItem value="80MHz">80 MHz</SelectItem>
+                    <SelectItem value="160MHz">160 MHz</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </TabsContent>
+          </Tabs>
+          <div className="border-t pt-4 mt-2">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="wifi-guest-enabled"
+                  checked={wifiConfig.enabled_guest}
+                  onCheckedChange={(checked) => setWifiConfig({ ...wifiConfig, enabled_guest: !!checked })}
+                  data-testid="checkbox-wifi-guest-enabled"
+                />
+                <Label htmlFor="wifi-guest-enabled" className="font-medium">Guest Network</Label>
+              </div>
+              {wifiConfig.enabled_guest && (
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="wifi-guest-isolation"
+                    checked={wifiConfig.guestIsolation}
+                    onCheckedChange={(checked) => setWifiConfig({ ...wifiConfig, guestIsolation: !!checked })}
+                    data-testid="checkbox-wifi-guest-isolation"
+                  />
+                  <Label htmlFor="wifi-guest-isolation" className="text-sm text-muted-foreground">Client Isolation</Label>
+                </div>
+              )}
             </div>
-            <div className="space-y-2">
-              <Label>Password</Label>
-              <Input
-                type="password"
-                value={wifiConfig.password}
-                onChange={(e) => setWifiConfig({ ...wifiConfig, password: e.target.value })}
-                placeholder="Enter WiFi password (min 8 characters)"
-                data-testid="input-wifi-password"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Security Mode</Label>
-              <Select
-                value={wifiConfig.securityMode}
-                onValueChange={(value) => setWifiConfig({ ...wifiConfig, securityMode: value })}
-              >
-                <SelectTrigger data-testid="select-wifi-security">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="WPA2-Personal">WPA2-Personal (Recommended)</SelectItem>
-                  <SelectItem value="WPA3-Personal">WPA3-Personal</SelectItem>
-                  <SelectItem value="WPA-WPA2-Personal">WPA/WPA2-Personal (Mixed)</SelectItem>
-                  <SelectItem value="None">Open (No Security)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Channel</Label>
-              <Select
-                value={wifiConfig.channel}
-                onValueChange={(value) => setWifiConfig({ ...wifiConfig, channel: value })}
-              >
-                <SelectTrigger data-testid="select-wifi-channel">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="auto">Auto</SelectItem>
-                  <SelectItem value="1">Channel 1</SelectItem>
-                  <SelectItem value="6">Channel 6</SelectItem>
-                  <SelectItem value="11">Channel 11</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="wifi-enabled"
-                checked={wifiConfig.enabled}
-                onCheckedChange={(checked) => setWifiConfig({ ...wifiConfig, enabled: !!checked })}
-                data-testid="checkbox-wifi-enabled"
-              />
-              <Label htmlFor="wifi-enabled">Enable WiFi</Label>
-            </div>
+            {wifiConfig.enabled_guest && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Guest SSID</Label>
+                  <Input
+                    value={wifiConfig.ssid_guest}
+                    onChange={(e) => setWifiConfig({ ...wifiConfig, ssid_guest: e.target.value })}
+                    placeholder="Guest network name"
+                    data-testid="input-wifi-ssid-guest"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Guest Password</Label>
+                  <Input
+                    type="password"
+                    value={wifiConfig.password_guest}
+                    onChange={(e) => setWifiConfig({ ...wifiConfig, password_guest: e.target.value })}
+                    placeholder="Min 8 characters"
+                    data-testid="input-wifi-password-guest"
+                  />
+                </div>
+              </div>
+            )}
           </div>
-          <div className="flex justify-end gap-3">
+          <div className="flex justify-end gap-3 pt-4">
             <Button variant="outline" onClick={() => setWifiDialogOpen(false)}>
               Cancel
             </Button>
             <Button
               onClick={() => {
                 if (!selectedOnu) return;
-                if (!wifiConfig.ssid) {
-                  toast({ title: "Error", description: "SSID is required", variant: "destructive" });
-                  return;
+                const parameterValues: Array<{ name: string; value: string; type?: string }> = [];
+                
+                // 2.4GHz Radio.1 and SSID.1 configuration
+                parameterValues.push({ name: "Device.WiFi.Radio.1.Enable", value: wifiConfig.enabled_2g ? "true" : "false", type: "xsd:boolean" });
+                if (wifiConfig.enabled_2g) {
+                  if (!wifiConfig.ssid_2g) {
+                    toast({ title: "Error", description: "2.4GHz SSID is required", variant: "destructive" });
+                    return;
+                  }
+                  if (wifiConfig.securityMode_2g !== "None" && wifiConfig.password_2g.length < 8) {
+                    toast({ title: "Error", description: "2.4GHz password must be at least 8 characters", variant: "destructive" });
+                    return;
+                  }
+                  parameterValues.push({ name: "Device.WiFi.SSID.1.SSID", value: wifiConfig.ssid_2g, type: "xsd:string" });
+                  parameterValues.push({ name: "Device.WiFi.SSID.1.Enable", value: "true", type: "xsd:boolean" });
+                  parameterValues.push({ name: "Device.WiFi.AccessPoint.1.Security.ModeEnabled", value: wifiConfig.securityMode_2g, type: "xsd:string" });
+                  if (wifiConfig.password_2g) {
+                    parameterValues.push({ name: "Device.WiFi.AccessPoint.1.Security.KeyPassphrase", value: wifiConfig.password_2g, type: "xsd:string" });
+                  }
+                  if (wifiConfig.channel_2g !== "auto") {
+                    parameterValues.push({ name: "Device.WiFi.Radio.1.Channel", value: wifiConfig.channel_2g, type: "xsd:unsignedInt" });
+                    parameterValues.push({ name: "Device.WiFi.Radio.1.AutoChannelEnable", value: "false", type: "xsd:boolean" });
+                  } else {
+                    parameterValues.push({ name: "Device.WiFi.Radio.1.AutoChannelEnable", value: "true", type: "xsd:boolean" });
+                  }
+                  parameterValues.push({ name: "Device.WiFi.Radio.1.OperatingChannelBandwidth", value: wifiConfig.bandwidth_2g, type: "xsd:string" });
                 }
-                if (wifiConfig.securityMode !== "None" && wifiConfig.password.length < 8) {
-                  toast({ title: "Error", description: "Password must be at least 8 characters", variant: "destructive" });
-                  return;
+                
+                // 5GHz Radio.2 and SSID.2 configuration
+                parameterValues.push({ name: "Device.WiFi.Radio.2.Enable", value: wifiConfig.enabled_5g ? "true" : "false", type: "xsd:boolean" });
+                if (wifiConfig.enabled_5g) {
+                  if (!wifiConfig.ssid_5g) {
+                    toast({ title: "Error", description: "5GHz SSID is required", variant: "destructive" });
+                    return;
+                  }
+                  if (wifiConfig.securityMode_5g !== "None" && wifiConfig.password_5g.length < 8) {
+                    toast({ title: "Error", description: "5GHz password must be at least 8 characters", variant: "destructive" });
+                    return;
+                  }
+                  parameterValues.push({ name: "Device.WiFi.SSID.2.SSID", value: wifiConfig.ssid_5g, type: "xsd:string" });
+                  parameterValues.push({ name: "Device.WiFi.SSID.2.Enable", value: "true", type: "xsd:boolean" });
+                  parameterValues.push({ name: "Device.WiFi.AccessPoint.2.Security.ModeEnabled", value: wifiConfig.securityMode_5g, type: "xsd:string" });
+                  if (wifiConfig.password_5g) {
+                    parameterValues.push({ name: "Device.WiFi.AccessPoint.2.Security.KeyPassphrase", value: wifiConfig.password_5g, type: "xsd:string" });
+                  }
+                  if (wifiConfig.channel_5g !== "auto") {
+                    parameterValues.push({ name: "Device.WiFi.Radio.2.Channel", value: wifiConfig.channel_5g, type: "xsd:unsignedInt" });
+                    parameterValues.push({ name: "Device.WiFi.Radio.2.AutoChannelEnable", value: "false", type: "xsd:boolean" });
+                  } else {
+                    parameterValues.push({ name: "Device.WiFi.Radio.2.AutoChannelEnable", value: "true", type: "xsd:boolean" });
+                  }
+                  parameterValues.push({ name: "Device.WiFi.Radio.2.OperatingChannelBandwidth", value: wifiConfig.bandwidth_5g, type: "xsd:string" });
                 }
-                const parameterValues: Array<{ name: string; value: string; type?: string }> = [
-                  { name: "Device.WiFi.SSID.1.SSID", value: wifiConfig.ssid, type: "xsd:string" },
-                  { name: "Device.WiFi.SSID.1.Enable", value: wifiConfig.enabled ? "true" : "false", type: "xsd:boolean" },
-                  { name: "Device.WiFi.AccessPoint.1.Security.ModeEnabled", value: wifiConfig.securityMode, type: "xsd:string" },
-                ];
-                if (wifiConfig.password) {
-                  parameterValues.push({ name: "Device.WiFi.AccessPoint.1.Security.KeyPassphrase", value: wifiConfig.password, type: "xsd:string" });
-                }
-                if (wifiConfig.channel !== "auto") {
-                  const channelNum = parseInt(wifiConfig.channel, 10);
-                  parameterValues.push({ name: "Device.WiFi.Radio.1.Channel", value: String(channelNum), type: "xsd:unsignedInt" });
-                  parameterValues.push({ name: "Device.WiFi.Radio.1.AutoChannelEnable", value: "false", type: "xsd:boolean" });
+                
+                // Guest network SSID.3 configuration
+                if (wifiConfig.enabled_guest) {
+                  if (!wifiConfig.ssid_guest) {
+                    toast({ title: "Error", description: "Guest SSID is required", variant: "destructive" });
+                    return;
+                  }
+                  if (wifiConfig.password_guest.length < 8) {
+                    toast({ title: "Error", description: "Guest password must be at least 8 characters", variant: "destructive" });
+                    return;
+                  }
+                  parameterValues.push({ name: "Device.WiFi.SSID.3.SSID", value: wifiConfig.ssid_guest, type: "xsd:string" });
+                  parameterValues.push({ name: "Device.WiFi.SSID.3.Enable", value: "true", type: "xsd:boolean" });
+                  parameterValues.push({ name: "Device.WiFi.AccessPoint.3.Security.ModeEnabled", value: "WPA2-Personal", type: "xsd:string" });
+                  parameterValues.push({ name: "Device.WiFi.AccessPoint.3.Security.KeyPassphrase", value: wifiConfig.password_guest, type: "xsd:string" });
+                  parameterValues.push({ name: "Device.WiFi.AccessPoint.3.IsolationEnable", value: wifiConfig.guestIsolation ? "true" : "false", type: "xsd:boolean" });
                 } else {
-                  parameterValues.push({ name: "Device.WiFi.Radio.1.Channel", value: "0", type: "xsd:unsignedInt" });
-                  parameterValues.push({ name: "Device.WiFi.Radio.1.AutoChannelEnable", value: "true", type: "xsd:boolean" });
+                  parameterValues.push({ name: "Device.WiFi.SSID.3.Enable", value: "false", type: "xsd:boolean" });
                 }
+                
                 createTr069TaskMutation.mutate({
                   onuId: selectedOnu.id,
                   taskType: "set_parameter_values",
