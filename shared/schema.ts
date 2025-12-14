@@ -107,6 +107,7 @@ export const olts = pgTable("olts", {
   autoProvisionEnabled: boolean("auto_provision_enabled").default(false),
   autoProvisionServiceProfileId: varchar("auto_provision_service_profile_id"),
   vpnProfileId: varchar("vpn_profile_id"), // Link to VPN profile for reaching this OLT
+  mikrotikDeviceId: varchar("mikrotik_device_id"), // Link to Mikrotik gateway device
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -646,6 +647,69 @@ export const insertVpnProfileSchema = createInsertSchema(vpnProfiles).omit({
   lastError: true,
 });
 
+// Mikrotik Enums
+export const mikrotikStatusEnum = pgEnum("mikrotik_status", ["online", "offline", "connecting", "error"]);
+
+// Mikrotik Devices - RouterOS devices at remote sites
+export const mikrotikDevices = pgTable("mikrotik_devices", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  // Connection settings
+  ipAddress: varchar("ip_address", { length: 45 }).notNull(),
+  apiPort: integer("api_port").default(8728),
+  useTls: boolean("use_tls").default(false),
+  username: varchar("username", { length: 100 }).notNull(),
+  password: varchar("password", { length: 255 }).notNull(),
+  // Site metadata
+  siteName: varchar("site_name", { length: 255 }),
+  siteAddress: text("site_address"),
+  // VPN configuration - this Mikrotik connects as OpenVPN client
+  vpnProfileId: varchar("vpn_profile_id").references(() => vpnProfiles.id),
+  vpnTunnelIp: varchar("vpn_tunnel_ip", { length: 45 }), // IP assigned in VPN tunnel
+  // Status monitoring
+  status: mikrotikStatusEnum("status").default("offline"),
+  lastSeen: timestamp("last_seen"),
+  lastError: text("last_error"),
+  // System info from RouterOS
+  routerModel: varchar("router_model", { length: 100 }),
+  routerOsVersion: varchar("routeros_version", { length: 50 }),
+  cpuUsage: real("cpu_usage"),
+  memoryUsage: real("memory_usage"),
+  uptime: integer("uptime"),
+  // Timestamps
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Mikrotik Relations
+export const mikrotikDevicesRelations = relations(mikrotikDevices, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [mikrotikDevices.tenantId],
+    references: [tenants.id],
+  }),
+  vpnProfile: one(vpnProfiles, {
+    fields: [mikrotikDevices.vpnProfileId],
+    references: [vpnProfiles.id],
+  }),
+}));
+
+// Mikrotik Insert Schema
+export const insertMikrotikDeviceSchema = createInsertSchema(mikrotikDevices).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastSeen: true,
+  status: true,
+  lastError: true,
+  routerModel: true,
+  routerOsVersion: true,
+  cpuUsage: true,
+  memoryUsage: true,
+  uptime: true,
+});
+
 // TR-069 Insert Schemas
 export const insertTr069DeviceSchema = createInsertSchema(tr069Devices).omit({
   id: true,
@@ -720,3 +784,6 @@ export type InsertVpnTunnel = z.infer<typeof insertVpnTunnelSchema>;
 
 export type VpnProfile = typeof vpnProfiles.$inferSelect;
 export type InsertVpnProfile = z.infer<typeof insertVpnProfileSchema>;
+
+export type MikrotikDevice = typeof mikrotikDevices.$inferSelect;
+export type InsertMikrotikDevice = z.infer<typeof insertMikrotikDeviceSchema>;
