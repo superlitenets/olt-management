@@ -102,12 +102,12 @@ export function setupLocalAuth(app: Express) {
           res.json({ message: "Registration successful", user: safeUser });
         }
       );
-    } catch (error) {
+    } catch (error: any) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: error.errors[0].message });
       }
-      console.error("Registration error:", error);
-      res.status(500).json({ message: "Registration failed" });
+      console.error("Registration error:", error?.message || error, error?.stack);
+      res.status(500).json({ message: "Registration failed", error: error?.message });
     }
   });
 
