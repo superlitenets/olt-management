@@ -75,6 +75,15 @@ export async function registerRoutes(
     });
   };
 
+  // Health check endpoint for Docker/Kubernetes
+  app.get("/api/health", (req, res) => {
+    res.json({ 
+      status: "healthy",
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime()
+    });
+  });
+
   // Auth config - expose whether Replit Auth is available
   app.get("/api/auth/config", (req, res) => {
     res.json({ 

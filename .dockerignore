@@ -1,13 +1,49 @@
+# Dependencies
 node_modules
+.pnpm-store
+
+# Build output
 dist
+
+# Git
 .git
 .gitignore
+
+# Documentation (optional - remove if you want docs in container)
 *.md
+!README.md
+
+# Environment files (use docker-compose environment instead)
 .env
 .env.*
+!.env.example
+
+# Replit specific
 .replit
 replit.nix
+.cache
+.upm
+
+# Logs
 *.log
-.DS_Store
+logs
+
+# Testing
 coverage
 .nyc_output
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Backups
+backups
+
+# Local state
+.local

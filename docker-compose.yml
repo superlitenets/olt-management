@@ -1,52 +1,107 @@
+version: "3.8"
+
 services:
   app:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: olt-management-app
     ports:
       - "5000:5000"
       - "7547:7547"
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/oltmanagement
-      - SESSION_SECRET=${SESSION_SECRET:-your-session-secret-change-in-production}
-      - SECURE_COOKIES=false
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/oltmanagement
+      - SESSION_SECRET=${SESSION_SECRET:-change-this-in-production-use-strong-secret}
+      - SECURE_COOKIES=${SECURE_COOKIES:-false}
     depends_on:
       db:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+    networks:
+      - olt-network
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   migrate:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: olt-management-migrate
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/oltmanagement
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/oltmanagement
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - olt-network
     command: npx drizzle-kit push --force
     restart: "no"
 
   db:
     image: postgres:16-alpine
+    container_name: olt-management-db
     environment:
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_DB=oltmanagement
+      - PGDATA=/var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - olt-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d oltmanagement"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 10s
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional: Database backup service
+  db-backup:
+    image: postgres:16-alpine
+    container_name: olt-management-backup
+    environment:
+      - PGPASSWORD=${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - ./backups:/backups
+    networks:
+      - olt-network
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mkdir -p /backups &&
+        while true; do
+          pg_dump -h db -U postgres oltmanagement > /backups/backup_$$(date +%Y%m%d_%H%M%S).sql &&
+          find /backups -name 'backup_*.sql' -mtime +7 -delete;
+          sleep 86400;
+        done
+      "
+    restart: unless-stopped
+    profiles:
+      - backup
+
+networks:
+  olt-network:
+    driver: bridge
 
 volumes:
   postgres_data:
+    driver: local
