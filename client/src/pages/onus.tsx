@@ -74,6 +74,7 @@ import {
   List,
   Edit2,
   Save,
+  Network,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { Onu, Olt, ServiceProfile, Tr069Device, OnuEvent } from "@shared/schema";
@@ -110,6 +111,19 @@ export default function OnusPage() {
   const [newParameterValue, setNewParameterValue] = useState("");
   const [newParameterType, setNewParameterType] = useState<string>("xsd:string");
   const [fetchingParams, setFetchingParams] = useState(false);
+  const [vlanDialogOpen, setVlanDialogOpen] = useState(false);
+  const [vlanConfig, setVlanConfig] = useState({
+    vlanId: "",
+    ipMode: "DHCP" as "DHCP" | "Static" | "PPPoE",
+    ipAddress: "",
+    subnetMask: "255.255.255.0",
+    gateway: "",
+    dnsServer: "",
+    pppoeUsername: "",
+    pppoePassword: "",
+    mtu: "1500",
+    enabled: true,
+  });
   const { toast } = useToast();
 
   const { data: onus, isLoading } = useQuery<Onu[]>({
@@ -1213,6 +1227,30 @@ export default function OnusPage() {
                           <Zap className="h-5 w-5" />
                           <span className="text-xs">Factory Reset</span>
                         </Button>
+                        <Button
+                          variant="outline"
+                          className="flex flex-col items-center gap-2 h-auto py-4"
+                          onClick={() => {
+                            setVlanConfig({
+                              vlanId: "",
+                              ipMode: "DHCP",
+                              ipAddress: "",
+                              subnetMask: "255.255.255.0",
+                              gateway: "",
+                              dnsServer: "",
+                              pppoeUsername: "",
+                              pppoePassword: "",
+                              mtu: "1500",
+                              enabled: true,
+                            });
+                            setVlanDialogOpen(true);
+                          }}
+                          disabled={createTr069TaskMutation.isPending}
+                          data-testid="button-tr069-vlan"
+                        >
+                          <Network className="h-5 w-5" />
+                          <span className="text-xs">Configure WAN/VLAN</span>
+                        </Button>
                       </div>
                     </div>
 
@@ -1756,6 +1794,190 @@ export default function OnusPage() {
           <div className="flex justify-end gap-3 pt-4">
             <Button variant="outline" onClick={() => setParametersDialogOpen(false)}>
               Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={vlanDialogOpen} onOpenChange={setVlanDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Network className="h-5 w-5" />
+              Configure WAN/VLAN
+            </DialogTitle>
+            <DialogDescription>
+              Configure WAN connection and VLAN settings for this ONU via TR-069
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>VLAN ID</Label>
+                <Input
+                  value={vlanConfig.vlanId}
+                  onChange={(e) => setVlanConfig({ ...vlanConfig, vlanId: e.target.value })}
+                  placeholder="100"
+                  data-testid="input-vlan-id"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>MTU</Label>
+                <Input
+                  value={vlanConfig.mtu}
+                  onChange={(e) => setVlanConfig({ ...vlanConfig, mtu: e.target.value })}
+                  placeholder="1500"
+                  data-testid="input-vlan-mtu"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>IP Mode</Label>
+              <Select
+                value={vlanConfig.ipMode}
+                onValueChange={(value: "DHCP" | "Static" | "PPPoE") => setVlanConfig({ ...vlanConfig, ipMode: value })}
+              >
+                <SelectTrigger data-testid="select-vlan-ip-mode">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DHCP">DHCP (Automatic)</SelectItem>
+                  <SelectItem value="Static">Static IP</SelectItem>
+                  <SelectItem value="PPPoE">PPPoE</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {vlanConfig.ipMode === "Static" && (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>IP Address</Label>
+                    <Input
+                      value={vlanConfig.ipAddress}
+                      onChange={(e) => setVlanConfig({ ...vlanConfig, ipAddress: e.target.value })}
+                      placeholder="192.168.1.100"
+                      data-testid="input-vlan-ip"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Subnet Mask</Label>
+                    <Input
+                      value={vlanConfig.subnetMask}
+                      onChange={(e) => setVlanConfig({ ...vlanConfig, subnetMask: e.target.value })}
+                      placeholder="255.255.255.0"
+                      data-testid="input-vlan-subnet"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Gateway</Label>
+                    <Input
+                      value={vlanConfig.gateway}
+                      onChange={(e) => setVlanConfig({ ...vlanConfig, gateway: e.target.value })}
+                      placeholder="192.168.1.1"
+                      data-testid="input-vlan-gateway"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>DNS Server</Label>
+                    <Input
+                      value={vlanConfig.dnsServer}
+                      onChange={(e) => setVlanConfig({ ...vlanConfig, dnsServer: e.target.value })}
+                      placeholder="8.8.8.8"
+                      data-testid="input-vlan-dns"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+            {vlanConfig.ipMode === "PPPoE" && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>PPPoE Username</Label>
+                  <Input
+                    value={vlanConfig.pppoeUsername}
+                    onChange={(e) => setVlanConfig({ ...vlanConfig, pppoeUsername: e.target.value })}
+                    placeholder="user@isp.com"
+                    data-testid="input-pppoe-username"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>PPPoE Password</Label>
+                  <Input
+                    type="password"
+                    value={vlanConfig.pppoePassword}
+                    onChange={(e) => setVlanConfig({ ...vlanConfig, pppoePassword: e.target.value })}
+                    placeholder="PPPoE password"
+                    data-testid="input-pppoe-password"
+                  />
+                </div>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="vlan-enabled"
+                checked={vlanConfig.enabled}
+                onCheckedChange={(checked) => setVlanConfig({ ...vlanConfig, enabled: !!checked })}
+                data-testid="checkbox-vlan-enabled"
+              />
+              <Label htmlFor="vlan-enabled">Enable WAN Interface</Label>
+            </div>
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setVlanDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!selectedOnu) return;
+                const parameterValues: Array<{ name: string; value: string; type?: string }> = [];
+                if (vlanConfig.vlanId) {
+                  parameterValues.push({ name: "Device.Ethernet.VLANTermination.1.VLANID", value: vlanConfig.vlanId, type: "xsd:unsignedInt" });
+                }
+                parameterValues.push({ name: "Device.IP.Interface.1.Enable", value: vlanConfig.enabled ? "true" : "false", type: "xsd:boolean" });
+                parameterValues.push({ name: "Device.IP.Interface.1.IPv4Enable", value: vlanConfig.enabled ? "true" : "false", type: "xsd:boolean" });
+                if (vlanConfig.mtu && vlanConfig.mtu !== "1500") {
+                  parameterValues.push({ name: "Device.IP.Interface.1.MaxMTUSize", value: vlanConfig.mtu, type: "xsd:unsignedInt" });
+                }
+                if (vlanConfig.ipMode === "DHCP") {
+                  parameterValues.push({ name: "Device.DHCPv4.Client.1.Enable", value: "true", type: "xsd:boolean" });
+                  parameterValues.push({ name: "Device.IP.Interface.1.IPv4Address.1.AddressingType", value: "DHCP", type: "xsd:string" });
+                } else if (vlanConfig.ipMode === "Static") {
+                  parameterValues.push({ name: "Device.DHCPv4.Client.1.Enable", value: "false", type: "xsd:boolean" });
+                  parameterValues.push({ name: "Device.IP.Interface.1.IPv4Address.1.AddressingType", value: "Static", type: "xsd:string" });
+                  if (vlanConfig.ipAddress) {
+                    parameterValues.push({ name: "Device.IP.Interface.1.IPv4Address.1.IPAddress", value: vlanConfig.ipAddress, type: "xsd:string" });
+                  }
+                  if (vlanConfig.subnetMask) {
+                    parameterValues.push({ name: "Device.IP.Interface.1.IPv4Address.1.SubnetMask", value: vlanConfig.subnetMask, type: "xsd:string" });
+                  }
+                  if (vlanConfig.gateway) {
+                    parameterValues.push({ name: "Device.Routing.Router.1.IPv4Forwarding.1.GatewayIPAddress", value: vlanConfig.gateway, type: "xsd:string" });
+                  }
+                  if (vlanConfig.dnsServer) {
+                    parameterValues.push({ name: "Device.DNS.Client.Server.1.DNSServer", value: vlanConfig.dnsServer, type: "xsd:string" });
+                  }
+                } else if (vlanConfig.ipMode === "PPPoE") {
+                  parameterValues.push({ name: "Device.PPP.Interface.1.Enable", value: "true", type: "xsd:boolean" });
+                  if (vlanConfig.pppoeUsername) {
+                    parameterValues.push({ name: "Device.PPP.Interface.1.Username", value: vlanConfig.pppoeUsername, type: "xsd:string" });
+                  }
+                  if (vlanConfig.pppoePassword) {
+                    parameterValues.push({ name: "Device.PPP.Interface.1.Password", value: vlanConfig.pppoePassword, type: "xsd:string" });
+                  }
+                }
+                createTr069TaskMutation.mutate({
+                  onuId: selectedOnu.id,
+                  taskType: "set_parameter_values",
+                  parameters: { parameterValues }
+                });
+                setVlanDialogOpen(false);
+              }}
+              disabled={createTr069TaskMutation.isPending}
+              data-testid="button-vlan-submit"
+            >
+              Apply Configuration
             </Button>
           </div>
         </DialogContent>
