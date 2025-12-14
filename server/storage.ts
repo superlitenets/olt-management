@@ -15,6 +15,7 @@ import {
   vpnGateways,
   vpnTunnels,
   vpnProfiles,
+  mikrotikDevices,
   type User,
   type UpsertUser,
   type Tenant,
@@ -45,6 +46,8 @@ import {
   type InsertVpnTunnel,
   type VpnProfile,
   type InsertVpnProfile,
+  type MikrotikDevice,
+  type InsertMikrotikDevice,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, count, avg } from "drizzle-orm";
@@ -147,6 +150,13 @@ export interface IStorage {
   createVpnProfile(profile: InsertVpnProfile): Promise<VpnProfile>;
   updateVpnProfile(id: string, profile: Partial<VpnProfile>): Promise<VpnProfile | undefined>;
   deleteVpnProfile(id: string): Promise<boolean>;
+  
+  // Mikrotik Device operations
+  getMikrotikDevice(id: string): Promise<MikrotikDevice | undefined>;
+  getMikrotikDevices(tenantId?: string): Promise<MikrotikDevice[]>;
+  createMikrotikDevice(device: InsertMikrotikDevice): Promise<MikrotikDevice>;
+  updateMikrotikDevice(id: string, device: Partial<MikrotikDevice>): Promise<MikrotikDevice | undefined>;
+  deleteMikrotikDevice(id: string): Promise<boolean>;
   
   // ONU Event operations (SmartOLT-style event history)
   getOnuEvents(onuId: string, limit?: number): Promise<OnuEvent[]>;
@@ -750,6 +760,38 @@ export class DatabaseStorage implements IStorage {
       criticalAlerts,
       avgRxPower,
     };
+  }
+
+  // Mikrotik Device operations
+  async getMikrotikDevice(id: string): Promise<MikrotikDevice | undefined> {
+    const [device] = await db.select().from(mikrotikDevices).where(eq(mikrotikDevices.id, id));
+    return device;
+  }
+
+  async getMikrotikDevices(tenantId?: string): Promise<MikrotikDevice[]> {
+    if (tenantId) {
+      return db.select().from(mikrotikDevices).where(eq(mikrotikDevices.tenantId, tenantId)).orderBy(desc(mikrotikDevices.createdAt));
+    }
+    return db.select().from(mikrotikDevices).orderBy(desc(mikrotikDevices.createdAt));
+  }
+
+  async createMikrotikDevice(device: InsertMikrotikDevice): Promise<MikrotikDevice> {
+    const [created] = await db.insert(mikrotikDevices).values(device).returning();
+    return created;
+  }
+
+  async updateMikrotikDevice(id: string, device: Partial<MikrotikDevice>): Promise<MikrotikDevice | undefined> {
+    const [updated] = await db
+      .update(mikrotikDevices)
+      .set({ ...device, updatedAt: new Date() })
+      .where(eq(mikrotikDevices.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteMikrotikDevice(id: string): Promise<boolean> {
+    await db.delete(mikrotikDevices).where(eq(mikrotikDevices.id, id));
+    return true;
   }
 }
 
