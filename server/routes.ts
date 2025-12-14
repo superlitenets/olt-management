@@ -17,6 +17,7 @@ import {
   insertVpnGatewaySchema,
   insertVpnTunnelSchema,
   insertVpnProfileSchema,
+  insertMikrotikDeviceSchema,
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -2341,6 +2342,76 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
     } catch (error) {
       console.error("Error testing VPN profile:", error);
       res.status(500).json({ message: "Failed to test VPN profile" });
+    }
+  });
+
+  // Mikrotik Device routes
+  app.get("/api/mikrotik/devices", isAuthenticated, async (req, res) => {
+    try {
+      const tenantId = req.query.tenantId as string | undefined;
+      const devices = await storage.getMikrotikDevices(tenantId);
+      res.json(devices);
+    } catch (error) {
+      console.error("Error fetching Mikrotik devices:", error);
+      res.status(500).json({ message: "Failed to fetch Mikrotik devices" });
+    }
+  });
+
+  app.get("/api/mikrotik/devices/:id", isAuthenticated, async (req, res) => {
+    try {
+      const device = await storage.getMikrotikDevice(req.params.id);
+      if (!device) {
+        return res.status(404).json({ message: "Mikrotik device not found" });
+      }
+      res.json(device);
+    } catch (error) {
+      console.error("Error fetching Mikrotik device:", error);
+      res.status(500).json({ message: "Failed to fetch Mikrotik device" });
+    }
+  });
+
+  app.post("/api/mikrotik/devices", isAuthenticated, async (req: any, res) => {
+    try {
+      const tenantId = await resolveTenantId(req);
+      const data = insertMikrotikDeviceSchema.parse({ ...req.body, tenantId });
+      const device = await storage.createMikrotikDevice(data);
+      broadcast("mikrotikDevice:created", device);
+      res.status(201).json(device);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      console.error("Error creating Mikrotik device:", error);
+      res.status(500).json({ message: "Failed to create Mikrotik device" });
+    }
+  });
+
+  app.patch("/api/mikrotik/devices/:id", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertMikrotikDeviceSchema.partial().parse(req.body);
+      const device = await storage.updateMikrotikDevice(req.params.id, data);
+      if (!device) {
+        return res.status(404).json({ message: "Mikrotik device not found" });
+      }
+      broadcast("mikrotikDevice:updated", device);
+      res.json(device);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      console.error("Error updating Mikrotik device:", error);
+      res.status(500).json({ message: "Failed to update Mikrotik device" });
+    }
+  });
+
+  app.delete("/api/mikrotik/devices/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteMikrotikDevice(req.params.id);
+      broadcast("mikrotikDevice:deleted", { id: req.params.id });
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting Mikrotik device:", error);
+      res.status(500).json({ message: "Failed to delete Mikrotik device" });
     }
   });
 
