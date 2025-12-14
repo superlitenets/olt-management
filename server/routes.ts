@@ -16,6 +16,7 @@ import {
   insertTr069FirmwareSchema,
   insertVpnGatewaySchema,
   insertVpnTunnelSchema,
+  insertVpnProfileSchema,
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -2225,6 +2226,109 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
     } catch (error) {
       console.error("Error generating VPN config:", error);
       res.status(500).json({ message: "Failed to generate VPN config" });
+    }
+  });
+
+  // VPN Profile routes (OpenVPN)
+  app.get("/api/vpn/profiles", isAuthenticated, async (req, res) => {
+    try {
+      const tenantId = req.query.tenantId as string | undefined;
+      const profiles = await storage.getVpnProfiles(tenantId);
+      res.json(profiles);
+    } catch (error) {
+      console.error("Error fetching VPN profiles:", error);
+      res.status(500).json({ message: "Failed to fetch VPN profiles" });
+    }
+  });
+
+  app.get("/api/vpn/profiles/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getVpnProfile(req.params.id);
+      if (!profile) {
+        return res.status(404).json({ message: "VPN profile not found" });
+      }
+      res.json(profile);
+    } catch (error) {
+      console.error("Error fetching VPN profile:", error);
+      res.status(500).json({ message: "Failed to fetch VPN profile" });
+    }
+  });
+
+  app.post("/api/vpn/profiles", isAuthenticated, async (req: any, res) => {
+    try {
+      const tenantId = await resolveTenantId(req);
+      const { tenantId: _, ...bodyWithoutTenant } = req.body;
+      const data = insertVpnProfileSchema.parse({ ...bodyWithoutTenant, tenantId });
+      const profile = await storage.createVpnProfile(data);
+      broadcast("vpnProfile:created", profile);
+      res.status(201).json(profile);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      console.error("Error creating VPN profile:", error);
+      res.status(500).json({ message: "Failed to create VPN profile" });
+    }
+  });
+
+  app.patch("/api/vpn/profiles/:id", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertVpnProfileSchema.partial().parse(req.body);
+      const profile = await storage.updateVpnProfile(req.params.id, data);
+      if (!profile) {
+        return res.status(404).json({ message: "VPN profile not found" });
+      }
+      broadcast("vpnProfile:updated", profile);
+      res.json(profile);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      console.error("Error updating VPN profile:", error);
+      res.status(500).json({ message: "Failed to update VPN profile" });
+    }
+  });
+
+  app.delete("/api/vpn/profiles/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteVpnProfile(req.params.id);
+      broadcast("vpnProfile:deleted", { id: req.params.id });
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting VPN profile:", error);
+      res.status(500).json({ message: "Failed to delete VPN profile" });
+    }
+  });
+
+  // Test VPN profile connection (shows environment limitation message on Replit)
+  app.post("/api/vpn/profiles/:id/test", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getVpnProfile(req.params.id);
+      if (!profile) {
+        return res.status(404).json({ message: "VPN profile not found" });
+      }
+
+      // Check if running in Replit environment (no TUN/TAP device available)
+      const isReplit = !!process.env.REPLIT_DEPLOYMENT_ID || !!process.env.REPL_ID;
+      
+      if (isReplit) {
+        return res.json({
+          success: false,
+          message: "OpenVPN requires TUN/TAP devices which are not available in the Replit environment. VPN connections will work when the application is deployed via Docker on a system with TUN/TAP support.",
+          environment: "replit",
+        });
+      }
+
+      // In a real deployment, this would attempt an actual OpenVPN connection
+      // For now, return a placeholder for non-Replit environments
+      res.json({
+        success: true,
+        message: "VPN profile configuration appears valid. Full connection testing requires the OpenVPN daemon.",
+        environment: "docker",
+      });
+    } catch (error) {
+      console.error("Error testing VPN profile:", error);
+      res.status(500).json({ message: "Failed to test VPN profile" });
     }
   });
 

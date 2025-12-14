@@ -14,6 +14,7 @@ import {
   tr069Firmware,
   vpnGateways,
   vpnTunnels,
+  vpnProfiles,
   type User,
   type UpsertUser,
   type Tenant,
@@ -42,6 +43,8 @@ import {
   type InsertVpnGateway,
   type VpnTunnel,
   type InsertVpnTunnel,
+  type VpnProfile,
+  type InsertVpnProfile,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, count, avg } from "drizzle-orm";
@@ -137,6 +140,13 @@ export interface IStorage {
   createVpnTunnel(tunnel: InsertVpnTunnel): Promise<VpnTunnel>;
   updateVpnTunnel(id: string, tunnel: Partial<VpnTunnel>): Promise<VpnTunnel | undefined>;
   deleteVpnTunnel(id: string): Promise<boolean>;
+  
+  // VPN Profile operations (OpenVPN)
+  getVpnProfile(id: string): Promise<VpnProfile | undefined>;
+  getVpnProfiles(tenantId?: string): Promise<VpnProfile[]>;
+  createVpnProfile(profile: InsertVpnProfile): Promise<VpnProfile>;
+  updateVpnProfile(id: string, profile: Partial<VpnProfile>): Promise<VpnProfile | undefined>;
+  deleteVpnProfile(id: string): Promise<boolean>;
   
   // ONU Event operations (SmartOLT-style event history)
   getOnuEvents(onuId: string, limit?: number): Promise<OnuEvent[]>;
@@ -626,6 +636,38 @@ export class DatabaseStorage implements IStorage {
 
   async deleteVpnTunnel(id: string): Promise<boolean> {
     await db.delete(vpnTunnels).where(eq(vpnTunnels.id, id));
+    return true;
+  }
+
+  // VPN Profile operations (OpenVPN)
+  async getVpnProfile(id: string): Promise<VpnProfile | undefined> {
+    const [profile] = await db.select().from(vpnProfiles).where(eq(vpnProfiles.id, id));
+    return profile;
+  }
+
+  async getVpnProfiles(tenantId?: string): Promise<VpnProfile[]> {
+    if (tenantId) {
+      return db.select().from(vpnProfiles).where(eq(vpnProfiles.tenantId, tenantId)).orderBy(desc(vpnProfiles.createdAt));
+    }
+    return db.select().from(vpnProfiles).orderBy(desc(vpnProfiles.createdAt));
+  }
+
+  async createVpnProfile(profile: InsertVpnProfile): Promise<VpnProfile> {
+    const [created] = await db.insert(vpnProfiles).values(profile).returning();
+    return created;
+  }
+
+  async updateVpnProfile(id: string, profile: Partial<VpnProfile>): Promise<VpnProfile | undefined> {
+    const [updated] = await db
+      .update(vpnProfiles)
+      .set({ ...profile, updatedAt: new Date() })
+      .where(eq(vpnProfiles.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteVpnProfile(id: string): Promise<boolean> {
+    await db.delete(vpnProfiles).where(eq(vpnProfiles.id, id));
     return true;
   }
 

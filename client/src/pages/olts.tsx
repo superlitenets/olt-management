@@ -63,8 +63,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { insertOltSchema, type Olt, type InsertOlt } from "@shared/schema";
+import { insertOltSchema, type Olt, type InsertOlt, type VpnProfile } from "@shared/schema";
 import { Link } from "wouter";
+import { Shield } from "lucide-react";
 
 const createOltFormSchema = insertOltSchema.omit({ tenantId: true }).extend({
   name: z.string().min(1, "Name is required"),
@@ -81,6 +82,10 @@ export default function OltsPage() {
 
   const { data: olts, isLoading } = useQuery<Olt[]>({
     queryKey: ["/api/olts"],
+  });
+
+  const { data: vpnProfiles } = useQuery<VpnProfile[]>({
+    queryKey: ["/api/vpn/profiles"],
   });
 
   const testConnectionMutation = useMutation({
@@ -142,6 +147,7 @@ export default function OltsPage() {
       acsUsername: "",
       acsPassword: "",
       acsPeriodicInformInterval: 3600,
+      vpnProfileId: null,
     },
   });
 
@@ -434,6 +440,41 @@ export default function OltsPage() {
                       <FormControl>
                         <Input placeholder="Data Center 1" {...field} value={field.value ?? ""} data-testid="input-olt-location" />
                       </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="vpnProfileId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2">
+                        <Shield className="h-4 w-4" />
+                        VPN Profile
+                      </FormLabel>
+                      <Select 
+                        onValueChange={(value) => field.onChange(value === "none" ? null : value)} 
+                        value={field.value ?? "none"}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="select-vpn-profile">
+                            <SelectValue placeholder="Select VPN profile (optional)" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">No VPN (direct connection)</SelectItem>
+                          {vpnProfiles?.filter(p => p.isActive).map((profile) => (
+                            <SelectItem key={profile.id} value={profile.id}>
+                              {profile.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Select a VPN profile if this OLT is only reachable through a VPN tunnel
+                      </p>
                       <FormMessage />
                     </FormItem>
                   )}

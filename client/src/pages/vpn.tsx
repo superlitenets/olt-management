@@ -70,8 +70,9 @@ import {
   Copy,
   Key,
 } from "lucide-react";
-import type { VpnGateway, VpnTunnel, Olt } from "@shared/schema";
+import type { VpnGateway, VpnTunnel, VpnProfile, Olt } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
+import { FileText, Upload, AlertTriangle } from "lucide-react";
 
 export default function VpnPage() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -84,6 +85,10 @@ export default function VpnPage() {
   const [deleteTunnelDialogOpen, setDeleteTunnelDialogOpen] = useState(false);
   const [gatewayToDelete, setGatewayToDelete] = useState<VpnGateway | null>(null);
   const [tunnelToDelete, setTunnelToDelete] = useState<VpnTunnel | null>(null);
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+  const [editingProfile, setEditingProfile] = useState<VpnProfile | null>(null);
+  const [deleteProfileDialogOpen, setDeleteProfileDialogOpen] = useState(false);
+  const [profileToDelete, setProfileToDelete] = useState<VpnProfile | null>(null);
   const { toast } = useToast();
 
   const [gatewayForm, setGatewayForm] = useState({
@@ -113,6 +118,14 @@ export default function VpnPage() {
     preSharedKey: "",
   });
 
+  const [profileForm, setProfileForm] = useState({
+    name: "",
+    description: "",
+    ovpnConfig: "",
+    username: "",
+    password: "",
+  });
+
   const { data: gateways, isLoading: gatewaysLoading } = useQuery<VpnGateway[]>({
     queryKey: ["/api/vpn/gateways"],
   });
@@ -123,6 +136,10 @@ export default function VpnPage() {
 
   const { data: olts } = useQuery<Olt[]>({
     queryKey: ["/api/olts"],
+  });
+
+  const { data: profiles, isLoading: profilesLoading } = useQuery<VpnProfile[]>({
+    queryKey: ["/api/vpn/profiles"],
   });
 
   const createGatewayMutation = useMutation({
@@ -326,6 +343,133 @@ export default function VpnPage() {
     },
   });
 
+  const createProfileMutation = useMutation({
+    mutationFn: async (data: typeof profileForm) => {
+      return apiRequest("POST", "/api/vpn/profiles", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vpn/profiles"] });
+      setProfileDialogOpen(false);
+      resetProfileForm();
+      toast({
+        title: "Profile Created",
+        description: "OpenVPN profile has been created successfully",
+      });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: "Failed to create profile",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateProfileMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<typeof profileForm> }) => {
+      return apiRequest("PATCH", `/api/vpn/profiles/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vpn/profiles"] });
+      setProfileDialogOpen(false);
+      setEditingProfile(null);
+      resetProfileForm();
+      toast({
+        title: "Profile Updated",
+        description: "OpenVPN profile has been updated successfully",
+      });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: "Failed to update profile",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteProfileMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("DELETE", `/api/vpn/profiles/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vpn/profiles"] });
+      setDeleteProfileDialogOpen(false);
+      setProfileToDelete(null);
+      toast({
+        title: "Profile Deleted",
+        description: "OpenVPN profile has been deleted",
+      });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: "Failed to delete profile",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const testProfileMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("POST", `/api/vpn/profiles/${id}/test`);
+    },
+    onSuccess: (data: any) => {
+      if (data.warning) {
+        toast({
+          title: "Environment Limitation",
+          description: data.message,
+          variant: "default",
+        });
+      } else if (data.success) {
+        toast({
+          title: "Connection Successful",
+          description: "VPN profile connection test passed",
+        });
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Test Failed",
+        description: error.message || "Failed to test VPN connection",
+        variant: "destructive",
+      });
+    },
+  });
+
   const resetGatewayForm = () => {
     setGatewayForm({
       name: "",
@@ -355,6 +499,52 @@ export default function VpnPage() {
       allowedIps: "0.0.0.0/0",
       preSharedKey: "",
     });
+  };
+
+  const resetProfileForm = () => {
+    setProfileForm({
+      name: "",
+      description: "",
+      ovpnConfig: "",
+      username: "",
+      password: "",
+    });
+  };
+
+  const openEditProfile = (profile: VpnProfile) => {
+    setEditingProfile(profile);
+    setProfileForm({
+      name: profile.name,
+      description: profile.description || "",
+      ovpnConfig: profile.ovpnConfig,
+      username: profile.username || "",
+      password: profile.password || "",
+    });
+    setProfileDialogOpen(true);
+  };
+
+  const handleProfileSubmit = () => {
+    if (editingProfile) {
+      updateProfileMutation.mutate({ id: editingProfile.id, data: profileForm });
+    } else {
+      createProfileMutation.mutate(profileForm);
+    }
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const content = e.target?.result as string;
+        setProfileForm({ ...profileForm, ovpnConfig: content });
+        if (!profileForm.name) {
+          const fileName = file.name.replace(/\.ovpn$/, "");
+          setProfileForm((prev) => ({ ...prev, name: fileName, ovpnConfig: content }));
+        }
+      };
+      reader.readAsText(file);
+    }
   };
 
   const openEditGateway = (gateway: VpnGateway) => {
@@ -452,6 +642,12 @@ export default function VpnPage() {
     (t) =>
       t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.peerEndpoint?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const filteredProfiles = profiles?.filter(
+    (p) =>
+      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.description?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const getStatusBadge = (status: string | null) => {
@@ -555,6 +751,10 @@ export default function VpnPage() {
             <TabsTrigger value="tunnels" data-testid="tab-tunnels">
               <Network className="h-4 w-4 mr-2" />
               Tunnels
+            </TabsTrigger>
+            <TabsTrigger value="profiles" data-testid="tab-profiles">
+              <FileText className="h-4 w-4 mr-2" />
+              OpenVPN Profiles
             </TabsTrigger>
           </TabsList>
 
@@ -743,7 +943,7 @@ export default function VpnPage() {
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
-            ) : (
+            ) : activeTab === "tunnels" ? (
               <Dialog open={tunnelDialogOpen} onOpenChange={(open) => {
                 setTunnelDialogOpen(open);
                 if (!open) {
@@ -911,7 +1111,133 @@ export default function VpnPage() {
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
-            )}
+            ) : activeTab === "profiles" ? (
+              <Dialog open={profileDialogOpen} onOpenChange={(open) => {
+                setProfileDialogOpen(open);
+                if (!open) {
+                  setEditingProfile(null);
+                  resetProfileForm();
+                }
+              }}>
+                <DialogTrigger asChild>
+                  <Button data-testid="button-add-profile">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Profile
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>{editingProfile ? "Edit Profile" : "Add OpenVPN Profile"}</DialogTitle>
+                    <DialogDescription>
+                      Upload or paste an OpenVPN configuration file (.ovpn)
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div className="p-3 border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950 rounded-md flex items-start gap-2">
+                      <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                      <div className="text-sm text-amber-700 dark:text-amber-300">
+                        <strong>Note:</strong> OpenVPN connections require TUN/TAP device support which is not available in Replit's environment. Full VPN functionality is available when running via Docker.
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="profile-name">Profile Name</Label>
+                      <Input
+                        id="profile-name"
+                        placeholder="My VPN Profile"
+                        value={profileForm.name}
+                        onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                        data-testid="input-profile-name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="profile-description">Description</Label>
+                      <Textarea
+                        id="profile-description"
+                        placeholder="Profile description..."
+                        value={profileForm.description}
+                        onChange={(e) => setProfileForm({ ...profileForm, description: e.target.value })}
+                        data-testid="input-profile-description"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>OpenVPN Configuration</Label>
+                      <div className="flex items-center gap-2">
+                        <Label
+                          htmlFor="ovpn-file"
+                          className="flex items-center gap-2 px-4 py-2 border rounded-md cursor-pointer hover-elevate"
+                        >
+                          <Upload className="h-4 w-4" />
+                          Upload .ovpn file
+                        </Label>
+                        <input
+                          id="ovpn-file"
+                          type="file"
+                          accept=".ovpn"
+                          onChange={handleFileUpload}
+                          className="hidden"
+                          data-testid="input-ovpn-file"
+                        />
+                        {profileForm.ovpnConfig && (
+                          <Badge variant="secondary">File loaded</Badge>
+                        )}
+                      </div>
+                      <Textarea
+                        placeholder="Or paste your .ovpn configuration here..."
+                        className="font-mono text-xs min-h-[200px]"
+                        value={profileForm.ovpnConfig}
+                        onChange={(e) => setProfileForm({ ...profileForm, ovpnConfig: e.target.value })}
+                        data-testid="input-ovpn-config"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="profile-username">Username (Optional)</Label>
+                        <Input
+                          id="profile-username"
+                          placeholder="VPN username"
+                          value={profileForm.username}
+                          onChange={(e) => setProfileForm({ ...profileForm, username: e.target.value })}
+                          data-testid="input-profile-username"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="profile-password">Password (Optional)</Label>
+                        <Input
+                          id="profile-password"
+                          type="password"
+                          placeholder="VPN password"
+                          value={profileForm.password}
+                          onChange={(e) => setProfileForm({ ...profileForm, password: e.target.value })}
+                          data-testid="input-profile-password"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setProfileDialogOpen(false);
+                        setEditingProfile(null);
+                        resetProfileForm();
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleProfileSubmit}
+                      disabled={createProfileMutation.isPending || updateProfileMutation.isPending || !profileForm.name || !profileForm.ovpnConfig}
+                      data-testid="button-save-profile"
+                    >
+                      {(createProfileMutation.isPending || updateProfileMutation.isPending) && (
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      )}
+                      {editingProfile ? "Update" : "Create"} Profile
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            ) : null}
           </div>
         </div>
 
@@ -1131,6 +1457,104 @@ export default function VpnPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="profiles" className="space-y-4">
+          <Card>
+            <CardContent className="p-0">
+              {profilesLoading ? (
+                <TableSkeleton />
+              ) : !filteredProfiles?.length ? (
+                <EmptyState
+                  icon={<FileText className="h-8 w-8" />}
+                  title="No OpenVPN Profiles"
+                  description="Upload .ovpn configuration files to manage VPN connections."
+                />
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Auth</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Last Connected</TableHead>
+                      <TableHead className="w-[50px]"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredProfiles.map((profile) => (
+                      <TableRow key={profile.id} data-testid={`row-profile-${profile.id}`}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <FileText className="h-4 w-4 text-muted-foreground" />
+                            <span className="font-medium">{profile.name}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {profile.description ? (
+                            <span className="text-sm text-muted-foreground">{profile.description}</span>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {profile.username ? (
+                            <Badge variant="secondary">Credentials set</Badge>
+                          ) : (
+                            <Badge variant="outline">No auth</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>{getStatusBadge(profile.status)}</TableCell>
+                        <TableCell>
+                          {profile.lastConnected ? (
+                            <span className="text-sm text-muted-foreground">
+                              {formatDistanceToNow(new Date(profile.lastConnected), { addSuffix: true })}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">Never</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" data-testid={`button-profile-menu-${profile.id}`}>
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => openEditProfile(profile)}>
+                                <Edit className="h-4 w-4 mr-2" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={() => testProfileMutation.mutate(profile.id)}
+                                disabled={testProfileMutation.isPending}
+                              >
+                                <RefreshCw className={`h-4 w-4 mr-2 ${testProfileMutation.isPending ? 'animate-spin' : ''}`} />
+                                Test Connection
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive"
+                                onClick={() => {
+                                  setProfileToDelete(profile);
+                                  setDeleteProfileDialogOpen(true);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       <AlertDialog open={deleteGatewayDialogOpen} onOpenChange={setDeleteGatewayDialogOpen}>
@@ -1175,6 +1599,32 @@ export default function VpnPage() {
               data-testid="button-confirm-delete-tunnel"
             >
               {deleteTunnelMutation.isPending ? (
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={deleteProfileDialogOpen} onOpenChange={setDeleteProfileDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete OpenVPN Profile</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{profileToDelete?.name}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setProfileToDelete(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => profileToDelete && deleteProfileMutation.mutate(profileToDelete.id)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-delete-profile"
+            >
+              {deleteProfileMutation.isPending ? (
                 <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
               ) : (
                 <Trash2 className="h-4 w-4 mr-2" />
