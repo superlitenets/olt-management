@@ -63,9 +63,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { insertOltSchema, type Olt, type InsertOlt, type VpnProfile } from "@shared/schema";
+import { insertOltSchema, type Olt, type InsertOlt, type VpnProfile, type MikrotikDevice } from "@shared/schema";
 import { Link } from "wouter";
-import { Shield } from "lucide-react";
+import { Shield, Router } from "lucide-react";
 
 const createOltFormSchema = insertOltSchema.omit({ tenantId: true }).extend({
   name: z.string().min(1, "Name is required"),
@@ -86,6 +86,10 @@ export default function OltsPage() {
 
   const { data: vpnProfiles } = useQuery<VpnProfile[]>({
     queryKey: ["/api/vpn/profiles"],
+  });
+
+  const { data: mikrotikDevices } = useQuery<MikrotikDevice[]>({
+    queryKey: ["/api/mikrotik/devices"],
   });
 
   const testConnectionMutation = useMutation({
@@ -148,6 +152,7 @@ export default function OltsPage() {
       acsPassword: "",
       acsPeriodicInformInterval: 3600,
       vpnProfileId: null,
+      mikrotikDeviceId: null,
     },
   });
 
@@ -474,6 +479,41 @@ export default function OltsPage() {
                       </Select>
                       <p className="text-xs text-muted-foreground">
                         Select a VPN profile if this OLT is only reachable through a VPN tunnel
+                      </p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="mikrotikDeviceId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2">
+                        <Router className="h-4 w-4" />
+                        Mikrotik Gateway
+                      </FormLabel>
+                      <Select 
+                        onValueChange={(value) => field.onChange(value === "none" ? null : value)} 
+                        value={field.value ?? "none"}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="select-mikrotik-gateway">
+                            <SelectValue placeholder="Select Mikrotik gateway (optional)" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">No Mikrotik gateway</SelectItem>
+                          {mikrotikDevices?.map((device) => (
+                            <SelectItem key={device.id} value={device.id}>
+                              {device.name} ({device.ipAddress})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Select the Mikrotik router that acts as the gateway for this OLT
                       </p>
                       <FormMessage />
                     </FormItem>
