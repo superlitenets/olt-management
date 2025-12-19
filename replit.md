@@ -1,305 +1,39 @@
 # OLT Management System
 
 ## Overview
-A comprehensive OLT (Optical Line Terminal) Management System for multi-vendor GPON/EPON networks. Built with React, Node.js/Express, and PostgreSQL. Supports Huawei and ZTE OLT vendors, ONU discovery and provisioning, TR-069/ACS for advanced configuration, real-time monitoring, and multi-tenant architecture.
+The OLT Management System is a comprehensive solution for managing multi-vendor GPON/EPON networks. It supports Huawei and ZTE OLTs, provides ONU discovery and provisioning primarily via TR-069/ACS, offers real-time monitoring, and operates within a multi-tenant architecture. The system aims to streamline OLT and ONU operations, enhance network visibility, and provide robust management capabilities for internet service providers.
 
-## Project Architecture
+## User Preferences
+My ideal workflow involves iterative development. I prefer detailed explanations for complex features and architectural decisions. Please ask before making major changes or refactoring large portions of the codebase. I prefer clear, concise communication and well-documented code.
 
-### Frontend (client/)
-- **Framework**: React with TypeScript
-- **Styling**: Tailwind CSS with shadcn/ui components
-- **Routing**: Wouter
-- **State Management**: TanStack Query for server state
-- **Design System**: Material Design inspired (Linear, Grafana, AWS Console)
+## System Architecture
 
-### Backend (server/)
-- **Framework**: Express.js with TypeScript
-- **Database**: PostgreSQL with Drizzle ORM
-- **Authentication**: Replit Auth (OpenID Connect)
-- **Session Management**: Express-session with connect-pg-simple
+### UI/UX Decisions
+The frontend is built with React and TypeScript, using Tailwind CSS and shadcn/ui components for a Material Design-inspired interface. The design emphasizes a clean, information-dense UI with dark mode support and consistent spacing, drawing inspiration from platforms like Linear, Grafana, and AWS Console.
 
-### Shared (shared/)
-- **schema.ts**: Drizzle database schema and Zod validation schemas
+### Technical Implementations
+- **Frontend**: React with TypeScript, Wouter for routing, and TanStack Query for server state management.
+- **Backend**: Express.js with TypeScript, using PostgreSQL as the database with Drizzle ORM.
+- **Authentication**: Replit Auth (OpenID Connect) for Replit deployments and local username/password authentication for self-hosted environments.
+- **Session Management**: Express-session with `connect-pg-simple`.
+- **Hybrid Management**: Utilizes OMCI for Layer 2 provisioning (VLAN, GEM ports) and TR-069/ACS for Layer 3 services (WiFi, VoIP, diagnostics).
+- **Multi-vendor Support**: Designed to integrate with Huawei and ZTE OLTs.
 
-## Key Features
+### Feature Specifications
+- **OLT Management**: Multi-vendor OLT support, connection status monitoring, PON port configuration, and VLAN management via CLI. Includes detailed OLT information retrieval via SNMP (boards, uplinks, VLANs, PON ports) and configuration saving.
+- **ONU Management**: Primarily TR-069 based for provisioning. Comprehensive ONU detail pages, TR-069 task-based operations (WiFi, VoIP, WAN/VLAN configuration), remote reboot/factory reset, status monitoring, and service profile assignment.
+- **TR-069/ACS Server**: Implements CWMP protocol for CPE management, supporting device auto-discovery, parameter get/set, firmware upgrades, remote actions, and configuration presets.
+- **Service Profiles**: Centralized management for bandwidth, VLAN, and QoS configurations.
+- **Multi-tenant Architecture**: Ensures tenant isolation and includes Role-Based Access Control (Super Admin, Tenant Admin, Operator).
+- **VPN Tunnels**: OpenVPN integration for secure OLT connections. Features include managing `.ovpn` configurations, auto-generating MikroTik onboarding scripts, downloading RouterOS scripts, associating VPN profiles with OLTs, and environment-aware connection management.
 
-### 1. OLT Management
-- Multi-vendor support (Huawei, ZTE)
-- Connection status monitoring
-- PON port configuration
+### System Design Choices
+The system uses a shared module (`shared/`) for Drizzle database schemas and Zod validation schemas, ensuring consistency between frontend and backend. The API is structured logically around resources like OLTs, ONUs, TR-069, and VPNs.
 
-### 2. ONU Management (TR-069 Only)
-- **All provisioning is done via TR-069/ACS** (OMCI provisioning removed)
-- ONU detail page at `/onus/:id` with comprehensive configuration options
-- TR-069 task-based operations: WiFi, VoIP, WAN/VLAN configuration
-- Remote reboot and factory reset via TR-069 tasks
-- Status monitoring (power levels, distance)
-- Service profile assignment for bandwidth/QoS reference
-
-### 3. TR-069/ACS Server
-- CWMP protocol support for CPE management
-- Location: `server/acs/index.ts`
-- Default port: 7547
-- Features:
-  - Device auto-discovery and registration
-  - Parameter get/set operations
-  - Firmware upgrade support
-  - Remote reboot and factory reset
-  - Configuration presets
-
-### 4. Service Profiles
-- Bandwidth configuration
-- VLAN management
-- QoS settings
-
-### 5. Multi-tenant Architecture
-- Tenant isolation
-- Role-based access control (Super Admin, Tenant Admin, Operator)
-
-### 6. OpenVPN Integration
-- VPN profiles management for secure OLT connections
-- Location: `server/vpn/vpn-manager.ts`
-- Environment detection (Replit vs Docker/local)
-- Features:
-  - Store and manage OpenVPN (.ovpn) configurations
-  - Associate VPN profiles with OLTs
-  - Connect/disconnect VPN tunnels (Docker/local only)
-  - Automatic environment detection with informative messaging
-- Requirements for VPN connections (Docker deployment):
-  - `--cap-add=NET_ADMIN` for network capabilities
-  - `--device=/dev/net/tun` for TUN device access
-  - OpenVPN package installed
-
-## Database Schema
-
-### Core Tables
-- `users` - User accounts with role-based access
-- `tenants` - Multi-tenant organization support
-- `olts` - OLT devices (Huawei, ZTE)
-- `onus` - ONU/ONT devices
-- `service_profiles` - Bandwidth and service configurations
-- `alerts` - System alerts and notifications
-- `event_logs` - Audit trail
-
-### TR-069 Tables
-- `tr069_devices` - CPE devices managed via TR-069
-- `tr069_parameters` - Device parameter cache
-- `tr069_tasks` - Pending/completed device tasks
-- `tr069_presets` - Auto-configuration presets
-- `tr069_firmware` - Firmware images for upgrades
-
-### VPN Tables
-- `vpn_profiles` - OpenVPN configuration profiles for OLT connectivity
-
-## API Routes
-
-### Authentication
-- `GET /api/auth/user` - Current user info
-- `GET /api/login` - Initiate login
-- `GET /api/logout` - Logout
-
-### OLT Management
-- `GET /api/olts` - List all OLTs
-- `POST /api/olts` - Create OLT
-- `GET /api/olts/:id` - Get OLT details
-- `GET /api/olts/:id/details` - Get detailed OLT info (boards, uplinks, VLANs, PON ports via SNMP)
-- `PATCH /api/olts/:id` - Update OLT
-- `DELETE /api/olts/:id` - Delete OLT
-- `POST /api/olts/:id/poll` - Poll OLT via SNMP (CPU, memory, temperature, ONU count)
-- `POST /api/olts/:id/vlans` - Create VLAN on OLT via CLI
-- `DELETE /api/olts/:id/vlans/:vlanId` - Delete VLAN from OLT via CLI
-- `POST /api/olts/:id/vlan-trunk` - Configure VLAN trunk on uplink port
-- `POST /api/olts/:id/save-config` - Save OLT configuration
-- `PATCH /api/olts/:id/acs-settings` - Update TR-069/ACS settings
-
-### ONU Management (TR-069 Only)
-- `GET /api/onus` - List all ONUs
-- `POST /api/onus` - Create ONU
-- `GET /api/onus/:id` - Get ONU details
-- `PATCH /api/onus/:id` - Update ONU
-- `DELETE /api/onus/:id` - Delete ONU
-- `POST /api/onus/:id/poll` - Poll ONU optical power via SNMP (Rx/Tx power, distance)
-- `GET /api/onus/:id/tr069` - Get linked TR-069 device
-- `POST /api/onus/:id/tr069/link` - Link ONU to TR-069 device
-- `GET /api/onus/:id/tr069/tasks` - Get TR-069 tasks for ONU
-- `POST /api/onus/:id/tr069/tasks` - Create TR-069 task for ONU (reboot, factory_reset, set_parameter_values, get_parameter_values)
-- `POST /api/onus/:id/provision-tr069` - Provision ONU with TR-069/ACS settings from parent OLT
-- Note: OMCI provisioning endpoints removed - use TR-069 tasks for all configuration
-
-### TR-069/ACS
-- `GET /api/tr069/devices` - List managed devices
-- `GET /api/tr069/devices/:id` - Device details
-- `DELETE /api/tr069/devices/:id` - Remove device
-- `GET /api/tr069/tasks` - List tasks
-- `POST /api/tr069/tasks` - Create task
-- `GET /api/tr069/presets` - List presets
-- `POST /api/tr069/presets` - Create preset
-- `GET /api/tr069/firmware` - List firmware images
-
-### VPN Management
-- `GET /api/vpn/profiles` - List all VPN profiles
-- `POST /api/vpn/profiles` - Create VPN profile
-- `GET /api/vpn/profiles/:id` - Get VPN profile details
-- `PATCH /api/vpn/profiles/:id` - Update VPN profile
-- `DELETE /api/vpn/profiles/:id` - Delete VPN profile
-- `POST /api/vpn/profiles/:id/test` - Test VPN profile configuration validity
-- `POST /api/vpn/profiles/:id/connect` - Connect VPN (Docker deployment only)
-- `POST /api/vpn/profiles/:id/disconnect` - Disconnect VPN
-- `GET /api/vpn/profiles/:id/status` - Get VPN connection status
-- `GET /api/vpn/profiles/:id/server-config` - Download OpenVPN server config template
-- `GET /api/vpn/environment` - Check VPN environment capabilities
-
-### MikroTik Management
-- `GET /api/mikrotik/devices` - List all MikroTik devices
-- `POST /api/mikrotik/devices` - Create MikroTik device (auto-generates onboarding script)
-- `GET /api/mikrotik/devices/:id` - Get MikroTik device details
-- `PATCH /api/mikrotik/devices/:id` - Update MikroTik device (regenerates script if VPN profile changes)
-- `DELETE /api/mikrotik/devices/:id` - Delete MikroTik device
-- `POST /api/mikrotik/devices/:id/regenerate-script` - Manually regenerate onboarding script
-- `GET /api/mikrotik/devices/:id/onboarding-script` - Download RouterOS onboarding script (.rsc)
-
-### Other Endpoints
-- `GET/POST /api/service-profiles`
-- `GET/POST /api/alerts`
-- `GET /api/tenants`
-- `GET /api/event-logs`
-
-## Running the Application
-
-### Development (Replit)
-```bash
-npm run dev
-```
-Starts Express server with Vite HMR on port 5000.
-
-### Docker
-```bash
-# Start with Docker Compose (includes PostgreSQL)
-docker-compose up -d
-
-# Or build and run manually
-docker build -t olt-management .
-docker run -p 5000:5000 -p 7547:7547 \
-  -e DATABASE_URL=postgresql://user:pass@host:5432/db \
-  -e SESSION_SECRET=your-secret \
-  olt-management
-```
-
-Ports:
-- `5000` - Web application
-- `7547` - TR-069/ACS server
-
-### Database
-```bash
-npm run db:push    # Push schema changes
-npm run db:studio  # Open Drizzle Studio
-```
-
-## Environment Variables
-- `DATABASE_URL` - PostgreSQL connection string (auto-provided)
-- `SESSION_SECRET` - Session encryption key
-- `REPLIT_DEPLOYMENT_ID` - Deployment context
-- `ISSUER_URL` - OpenID Connect issuer
-
-## Authentication
-The system supports two authentication methods:
-
-### Replit Auth (Default in Replit)
-- Uses OpenID Connect with Replit as identity provider
-- Automatic user creation on first login
-
-### Local Auth (For Docker/Self-hosted)
-- Username/password authentication with bcrypt hashing
-- Registration at `/auth` page
-- API endpoints:
-  - `POST /api/auth/register` - Create new account
-  - `POST /api/auth/login` - Authenticate with username/password
-  - `POST /api/auth/logout` - End session
-
-## Design Choices
-
-### Hybrid Management Approach
-- **OMCI**: Layer 2 provisioning (VLAN, GEM ports)
-- **TR-069/ACS**: Layer 3 services (WiFi, VoIP, diagnostics)
-
-### Material Design
-- Clean, information-dense UI
-- Dark mode support
-- Consistent spacing and typography
-
-## TR-069 Task Types
-The following task types are supported by the ACS server (use snake_case):
-- `get_parameter_values` - Get device parameters (requires `parameterNames` array)
-- `set_parameter_values` - Set device parameters (requires `parameterValues` array with name/value pairs)
-- `download` - Download firmware or config file
-- `reboot` - Reboot device
-- `factory_reset` - Factory reset device
-
-### Common TR-069 Parameter Paths
-WiFi Configuration:
-- `Device.WiFi.SSID.1.SSID` - WiFi network name
-- `Device.WiFi.SSID.1.Enable` - Enable/disable WiFi ("1" or "0")
-- `Device.WiFi.AccessPoint.1.Security.ModeEnabled` - Security mode (WPA2-Personal, WPA3-Personal, etc.)
-- `Device.WiFi.AccessPoint.1.Security.KeyPassphrase` - WiFi password
-- `Device.WiFi.Radio.1.Channel` - WiFi channel
-
-VoIP/SIP Configuration:
-- `Device.Services.VoiceService.1.VoiceProfile.1.Enable` - Enable voice profile
-- `Device.Services.VoiceService.1.VoiceProfile.1.SIP.ProxyServer` - SIP proxy server
-- `Device.Services.VoiceService.1.VoiceProfile.1.SIP.ProxyServerPort` - SIP port
-- `Device.Services.VoiceService.1.VoiceProfile.1.Line.{n}.SIP.AuthUserName` - SIP username
-- `Device.Services.VoiceService.1.VoiceProfile.1.Line.{n}.SIP.AuthPassword` - SIP password
-
-WAN Configuration (Route Mode):
-- `Device.IP.Interface.1.Enable` - Enable WAN interface ("1" or "0")
-- `Device.IP.Interface.1.IPv4Address.1.AddressingType` - Address type ("DHCP", "Static")
-- `Device.IP.Interface.1.IPv4Address.1.IPAddress` - Static IP address
-- `Device.IP.Interface.1.IPv4Address.1.SubnetMask` - Subnet mask
-- `Device.Routing.Router.1.IPv4Forwarding.1.GatewayIPAddress` - Default gateway
-- `Device.DNS.Client.Server.1.DNSServer` - Primary DNS server
-- `Device.DNS.Client.Server.2.DNSServer` - Secondary DNS server
-- `Device.DHCPv4.Client.1.Enable` - Enable DHCP client ("1" or "0")
-- `Device.NAT.InterfaceSetting.1.Enable` - Enable NAT ("1" or "0")
-- `Device.Ethernet.Interface.1.MaxMTUSize` - MTU size
-
-WAN Configuration (PPPoE):
-- `Device.PPP.Interface.1.Enable` - Enable PPPoE ("1" or "0")
-- `Device.PPP.Interface.1.Username` - PPPoE username
-- `Device.PPP.Interface.1.Password` - PPPoE password
-- `Device.PPP.Interface.1.ServiceName` - PPPoE service name (optional)
-- `Device.PPP.Interface.1.ConnectionTrigger` - Connection mode ("AlwaysOn", "OnDemand")
-
-WAN Configuration (Bridge Mode):
-- `Device.Bridging.Bridge.1.Enable` - Enable bridge mode ("1" or "0")
-
-Layer 2/VLAN Configuration:
-- `Device.Ethernet.VLANTermination.1.VLANID` - VLAN ID
-- `Device.Ethernet.VLANTermination.1.Enable` - Enable VLAN termination ("1" or "0")
-- `Device.Ethernet.VLANTermination.1.X_TagMode` - Tag mode ("Tagged", "Untagged")
-- `Device.Ethernet.VLANTermination.1.X_Priority` - VLAN priority (0-7)
-- `Device.Bridging.Bridge.1.VLAN.1.VLANID` - Bridge VLAN ID
-- `Device.Bridging.Bridge.1.VLAN.1.Enable` - Enable bridge VLAN ("1" or "0")
-- `Device.Ethernet.Interface.1.Enable` - Enable Ethernet interface ("1" or "0")
-
-## Recent Changes
-- December 2025: Auto-generate MikroTik onboarding scripts - Scripts are now auto-generated when devices are created/updated, stored in DB, with regenerate-on-demand endpoint
-- December 2025: Docker OpenVPN support - Dockerfile now includes openvpn package, docker-compose.yml has NET_ADMIN capability and TUN device for VPN tunnels
-- December 2025: Added MikroTik onboarding script generator - Downloads RouterOS commands (.rsc) for OpenVPN client setup, firewall rules, and health monitoring
-- December 2025: Added VPN server config template download - Reference OpenVPN server configuration for VPS deployment
-- December 2025: Added VPN connection controls - Connect/disconnect/status/test endpoints with environment detection
-- December 2025: Added comprehensive WAN configuration dialog with Route mode (DHCP, PPPoE, Static) and Bridge mode support
-- December 2025: Added Layer 2/VLAN configuration with service types (Internet, VoIP, IPTV, Management), tag modes, and bridge settings
-- December 2025: Added OpenVPN integration - VPN profiles management for secure OLT connections with environment detection (Replit vs Docker/local deployment)
-- December 2025: Added TR-069 parameters viewer/editor with type selector (String, Integer, Boolean) for inline editing
-- December 2025: Added TR-069 WiFi configuration dialog with SSID, password, security mode, channel settings
-- December 2025: Added TR-069 VoIP/SIP configuration dialog with server, credentials, line settings
-- December 2025: Added TR-069 Factory Reset action with confirmation
-- December 2025: Fixed TR-069 task types to use snake_case format (set_parameter_values, get_parameter_values, etc.)
-- December 2025: Enhanced OLT Hardware Details - Real-time SNMP discovery of boards, uplinks, VLANs, PON ports with multiple OID fallbacks for different OLT models
-- December 2025: Added VLAN management via CLI - Create/delete VLANs and configure VLAN trunks on uplink ports (trunk, access, hybrid modes)
-- December 2025: Added TR-069/ACS configuration UI - Edit ACS settings (URL, credentials, periodic inform) directly from OLT detail page
-- December 2025: Added TR-069/ACS zero-touch provisioning - OLTs can store ACS settings and push them to ONUs via OMCI
-- December 2025: Added ONU-TR069 integration with device linking and quick actions (WiFi, VoIP, reboot)
-- December 2025: Added TR-069/ACS server with full CWMP support
-- December 2025: Implemented multi-tenant architecture
-- December 2025: Added real-time monitoring capabilities
+## External Dependencies
+- **PostgreSQL**: Primary database for all system data.
+- **Replit Auth**: OpenID Connect provider for user authentication in Replit environments.
+- **SNMP**: Used for real-time polling and detailed information retrieval from OLTs.
+- **TR-069/ACS**: Integrated server for managing CPE devices.
+- **OpenVPN**: Used for establishing secure VPN tunnels to OLT devices.
+- **MikroTik RouterOS**: Integration for generating onboarding scripts to configure MikroTik devices as VPN clients.
