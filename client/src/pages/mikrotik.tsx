@@ -65,6 +65,7 @@ import {
   HardDrive,
   Download,
   FileCode,
+  RefreshCw,
 } from "lucide-react";
 import type { MikrotikDevice, VpnProfile } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
@@ -202,6 +203,50 @@ export default function MikrotikPage() {
       toast({
         title: "Error",
         description: "Failed to delete device",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const [regeneratingDevices, setRegeneratingDevices] = useState<Set<string>>(new Set());
+
+  const regenerateScriptMutation = useMutation({
+    mutationFn: async (id: string) => {
+      setRegeneratingDevices(prev => new Set(prev).add(id));
+      return apiRequest("POST", `/api/mikrotik/devices/${id}/regenerate-script`);
+    },
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/mikrotik/devices"] });
+      setRegeneratingDevices(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      toast({
+        title: "Script Regenerated",
+        description: "Onboarding script has been regenerated successfully",
+      });
+    },
+    onError: (error: Error, id) => {
+      setRegeneratingDevices(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: "Failed to regenerate script",
         variant: "destructive",
       });
     },
@@ -391,7 +436,7 @@ export default function MikrotikPage() {
                   <TableHead>IP Address</TableHead>
                   <TableHead>Site</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Model</TableHead>
+                  <TableHead>Script</TableHead>
                   <TableHead>Last Seen</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
@@ -430,13 +475,15 @@ export default function MikrotikPage() {
                     </TableCell>
                     <TableCell>{getStatusBadge(device.status)}</TableCell>
                     <TableCell>
-                      {device.routerModel ? (
+                      {device.scriptGeneratedAt ? (
                         <div className="flex items-center gap-1">
-                          <Cpu className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-sm">{device.routerModel}</span>
+                          <FileCode className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-xs text-muted-foreground">
+                            {formatDistanceToNow(new Date(device.scriptGeneratedAt), { addSuffix: true })}
+                          </span>
                         </div>
                       ) : (
-                        <span className="text-muted-foreground">-</span>
+                        <Badge variant="outline" className="text-xs">Not generated</Badge>
                       )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
@@ -458,6 +505,14 @@ export default function MikrotikPage() {
                           >
                             <FileCode className="h-4 w-4 mr-2" />
                             Download Onboarding Script
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => regenerateScriptMutation.mutate(device.id)}
+                            disabled={regeneratingDevices.has(device.id)}
+                            data-testid={`button-regenerate-script-${device.id}`}
+                          >
+                            <RefreshCw className={`h-4 w-4 mr-2 ${regeneratingDevices.has(device.id) ? 'animate-spin' : ''}`} />
+                            Regenerate Script
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => openEditDevice(device)}

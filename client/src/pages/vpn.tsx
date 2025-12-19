@@ -57,6 +57,12 @@ import {
   Info,
   Server,
   Download,
+  Play,
+  Square,
+  RefreshCw,
+  Loader2,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 import type { VpnProfile } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
@@ -67,6 +73,16 @@ interface VpnEnvironmentInfo {
   hasTunDevice: boolean;
   canEstablishVpn: boolean;
   reason?: string;
+}
+
+interface VpnStatus {
+  status: "connected" | "disconnected" | "connecting" | "error";
+  connectedSince?: string;
+  localIp?: string;
+  remoteIp?: string;
+  bytesReceived?: number;
+  bytesSent?: number;
+  error?: string;
 }
 
 export default function VpnPage() {
@@ -192,6 +208,134 @@ export default function VpnPage() {
       });
     },
   });
+
+  const [connectingProfiles, setConnectingProfiles] = useState<Set<string>>(new Set());
+  const [disconnectingProfiles, setDisconnectingProfiles] = useState<Set<string>>(new Set());
+  const [testingProfiles, setTestingProfiles] = useState<Set<string>>(new Set());
+
+  const connectMutation = useMutation({
+    mutationFn: async (id: string) => {
+      setConnectingProfiles(prev => new Set(prev).add(id));
+      return apiRequest("POST", `/api/vpn/profiles/${id}/connect`);
+    },
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vpn/profiles"] });
+      setConnectingProfiles(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      refreshStatus(id);
+      toast({
+        title: "Connecting",
+        description: "VPN connection initiated",
+      });
+    },
+    onError: (error: Error, id) => {
+      setConnectingProfiles(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      toast({
+        title: "Connection Failed",
+        description: error.message || "Failed to establish VPN connection",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const disconnectMutation = useMutation({
+    mutationFn: async (id: string) => {
+      setDisconnectingProfiles(prev => new Set(prev).add(id));
+      return apiRequest("POST", `/api/vpn/profiles/${id}/disconnect`);
+    },
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vpn/profiles"] });
+      setDisconnectingProfiles(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      refreshStatus(id);
+      toast({
+        title: "Disconnected",
+        description: "VPN connection terminated",
+      });
+    },
+    onError: (error: Error, id) => {
+      setDisconnectingProfiles(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      toast({
+        title: "Disconnect Failed",
+        description: error.message || "Failed to disconnect VPN",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const testMutation = useMutation({
+    mutationFn: async (id: string) => {
+      setTestingProfiles(prev => new Set(prev).add(id));
+      const response = await apiRequest("POST", `/api/vpn/profiles/${id}/test`);
+      return response.json();
+    },
+    onSuccess: (data, id) => {
+      setTestingProfiles(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      if (data.valid) {
+        toast({
+          title: "Configuration Valid",
+          description: "OpenVPN configuration is valid and ready to use",
+        });
+      } else {
+        toast({
+          title: "Configuration Issue",
+          description: data.error || "There may be issues with this configuration",
+          variant: "destructive",
+        });
+      }
+    },
+    onError: (error: Error, id) => {
+      setTestingProfiles(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      toast({
+        title: "Test Failed",
+        description: error.message || "Failed to test VPN configuration",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const getVpnStatus = async (profileId: string): Promise<VpnStatus> => {
+    const response = await fetch(`/api/vpn/profiles/${profileId}/status`);
+    if (!response.ok) throw new Error("Failed to fetch status");
+    return response.json();
+  };
+
+  const [vpnStatuses, setVpnStatuses] = useState<Record<string, VpnStatus>>({});
+  const [loadingStatuses, setLoadingStatuses] = useState<Record<string, boolean>>({});
+
+  const refreshStatus = async (profileId: string) => {
+    setLoadingStatuses(prev => ({ ...prev, [profileId]: true }));
+    try {
+      const status = await getVpnStatus(profileId);
+      setVpnStatuses(prev => ({ ...prev, [profileId]: status }));
+    } catch {
+      setVpnStatuses(prev => ({ ...prev, [profileId]: { status: "error", error: "Failed to fetch status" } }));
+    } finally {
+      setLoadingStatuses(prev => ({ ...prev, [profileId]: false }));
+    }
+  };
 
   const resetProfileForm = () => {
     setProfileForm({
@@ -369,6 +513,7 @@ export default function VpnPage() {
                   <TableHead>Name</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead>Authentication</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
@@ -392,6 +537,49 @@ export default function VpnPage() {
                         <Badge variant="outline">Certificate Only</Badge>
                       )}
                     </TableCell>
+                    <TableCell>
+                      {environment?.canEstablishVpn ? (
+                        <div className="flex items-center gap-2">
+                          {loadingStatuses[profile.id] ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                          ) : vpnStatuses[profile.id]?.status === "connected" ? (
+                            <Badge variant="default" className="bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20">
+                              <Wifi className="h-3 w-3 mr-1" />
+                              Connected
+                            </Badge>
+                          ) : vpnStatuses[profile.id]?.status === "connecting" ? (
+                            <Badge variant="secondary">
+                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                              Connecting
+                            </Badge>
+                          ) : vpnStatuses[profile.id]?.status === "error" ? (
+                            <Badge variant="destructive">
+                              <AlertTriangle className="h-3 w-3 mr-1" />
+                              Error
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline">
+                              <WifiOff className="h-3 w-3 mr-1" />
+                              Disconnected
+                            </Badge>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => refreshStatus(profile.id)}
+                            disabled={loadingStatuses[profile.id]}
+                            data-testid={`button-refresh-status-${profile.id}`}
+                          >
+                            <RefreshCw className={`h-3 w-3 ${loadingStatuses[profile.id] ? 'animate-spin' : ''}`} />
+                          </Button>
+                        </div>
+                      ) : (
+                        <Badge variant="outline" className="text-xs">
+                          N/A
+                        </Badge>
+                      )}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">
                       {profile.createdAt
                         ? formatDistanceToNow(new Date(profile.createdAt), { addSuffix: true })
@@ -405,6 +593,49 @@ export default function VpnPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          {environment?.canEstablishVpn && (
+                            <>
+                              {vpnStatuses[profile.id]?.status === "connected" ? (
+                                <DropdownMenuItem
+                                  onClick={() => disconnectMutation.mutate(profile.id)}
+                                  disabled={disconnectingProfiles.has(profile.id)}
+                                  data-testid={`button-disconnect-${profile.id}`}
+                                >
+                                  {disconnectingProfiles.has(profile.id) ? (
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  ) : (
+                                    <Square className="h-4 w-4 mr-2" />
+                                  )}
+                                  Disconnect
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem
+                                  onClick={() => connectMutation.mutate(profile.id)}
+                                  disabled={connectingProfiles.has(profile.id)}
+                                  data-testid={`button-connect-${profile.id}`}
+                                >
+                                  {connectingProfiles.has(profile.id) ? (
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  ) : (
+                                    <Play className="h-4 w-4 mr-2" />
+                                  )}
+                                  Connect
+                                </DropdownMenuItem>
+                              )}
+                            </>
+                          )}
+                          <DropdownMenuItem
+                            onClick={() => testMutation.mutate(profile.id)}
+                            disabled={testingProfiles.has(profile.id)}
+                            data-testid={`button-test-config-${profile.id}`}
+                          >
+                            {testingProfiles.has(profile.id) ? (
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : (
+                              <CheckCircle2 className="h-4 w-4 mr-2" />
+                            )}
+                            Test Configuration
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => window.open(`/api/vpn/profiles/${profile.id}/server-config`, "_blank")}
                             data-testid={`button-server-config-${profile.id}`}
