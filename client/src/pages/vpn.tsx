@@ -55,6 +55,8 @@ import {
   FileText,
   Upload,
   Info,
+  Server,
+  Download,
 } from "lucide-react";
 import type { VpnProfile } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
@@ -84,7 +86,7 @@ export default function VpnPage() {
   });
 
   const { data: profiles, isLoading: profilesLoading } = useQuery<VpnProfile[]>({
-    queryKey: ["/api/vpn-profiles"],
+    queryKey: ["/api/vpn/profiles"],
   });
 
   const { data: environment } = useQuery<VpnEnvironmentInfo>({
@@ -93,10 +95,10 @@ export default function VpnPage() {
 
   const createProfileMutation = useMutation({
     mutationFn: async (data: typeof profileForm) => {
-      return apiRequest("POST", "/api/vpn-profiles", data);
+      return apiRequest("POST", "/api/vpn/profiles", data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/vpn-profiles"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vpn/profiles"] });
       setProfileDialogOpen(false);
       resetProfileForm();
       toast({
@@ -126,10 +128,10 @@ export default function VpnPage() {
 
   const updateProfileMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<typeof profileForm> }) => {
-      return apiRequest("PATCH", `/api/vpn-profiles/${id}`, data);
+      return apiRequest("PATCH", `/api/vpn/profiles/${id}`, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/vpn-profiles"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vpn/profiles"] });
       setProfileDialogOpen(false);
       setEditingProfile(null);
       resetProfileForm();
@@ -160,10 +162,10 @@ export default function VpnPage() {
 
   const deleteProfileMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/vpn-profiles/${id}`);
+      return apiRequest("DELETE", `/api/vpn/profiles/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/vpn-profiles"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vpn/profiles"] });
       setDeleteProfileDialogOpen(false);
       setProfileToDelete(null);
       toast({
@@ -403,6 +405,13 @@ export default function VpnPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => window.open(`/api/vpn/profiles/${profile.id}/server-config`, "_blank")}
+                            data-testid={`button-server-config-${profile.id}`}
+                          >
+                            <Server className="h-4 w-4 mr-2" />
+                            Download Server Config
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => openEditProfile(profile)}
                             data-testid={`button-edit-profile-${profile.id}`}

@@ -137,12 +137,25 @@ A comprehensive OLT (Optical Line Terminal) Management System for multi-vendor G
 - `GET /api/tr069/firmware` - List firmware images
 
 ### VPN Management
-- `GET /api/vpn-profiles` - List all VPN profiles
-- `POST /api/vpn-profiles` - Create VPN profile
-- `GET /api/vpn-profiles/:id` - Get VPN profile details
-- `PATCH /api/vpn-profiles/:id` - Update VPN profile
-- `DELETE /api/vpn-profiles/:id` - Delete VPN profile
+- `GET /api/vpn/profiles` - List all VPN profiles
+- `POST /api/vpn/profiles` - Create VPN profile
+- `GET /api/vpn/profiles/:id` - Get VPN profile details
+- `PATCH /api/vpn/profiles/:id` - Update VPN profile
+- `DELETE /api/vpn/profiles/:id` - Delete VPN profile
+- `POST /api/vpn/profiles/:id/test` - Test VPN profile configuration validity
+- `POST /api/vpn/profiles/:id/connect` - Connect VPN (Docker deployment only)
+- `POST /api/vpn/profiles/:id/disconnect` - Disconnect VPN
+- `GET /api/vpn/profiles/:id/status` - Get VPN connection status
+- `GET /api/vpn/profiles/:id/server-config` - Download OpenVPN server config template
 - `GET /api/vpn/environment` - Check VPN environment capabilities
+
+### MikroTik Management
+- `GET /api/mikrotik/devices` - List all MikroTik devices
+- `POST /api/mikrotik/devices` - Create MikroTik device
+- `GET /api/mikrotik/devices/:id` - Get MikroTik device details
+- `PATCH /api/mikrotik/devices/:id` - Update MikroTik device
+- `DELETE /api/mikrotik/devices/:id` - Delete MikroTik device
+- `GET /api/mikrotik/devices/:id/onboarding-script` - Download RouterOS onboarding script (.rsc)
 
 ### Other Endpoints
 - `GET/POST /api/service-profiles`
@@ -268,6 +281,9 @@ Layer 2/VLAN Configuration:
 - `Device.Ethernet.Interface.1.Enable` - Enable Ethernet interface ("1" or "0")
 
 ## Recent Changes
+- December 2025: Added MikroTik onboarding script generator - Downloads RouterOS commands (.rsc) for OpenVPN client setup, firewall rules, and health monitoring
+- December 2025: Added VPN server config template download - Reference OpenVPN server configuration for VPS deployment
+- December 2025: Added VPN connection controls - Connect/disconnect/status/test endpoints with environment detection
 - December 2025: Added comprehensive WAN configuration dialog with Route mode (DHCP, PPPoE, Static) and Bridge mode support
 - December 2025: Added Layer 2/VLAN configuration with service types (Internet, VoIP, IPTV, Management), tag modes, and bridge settings
 - December 2025: Added OpenVPN integration - VPN profiles management for secure OLT connections with environment detection (Replit vs Docker/local deployment)

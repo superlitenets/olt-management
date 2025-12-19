@@ -63,6 +63,8 @@ import {
   MapPin,
   Cpu,
   HardDrive,
+  Download,
+  FileCode,
 } from "lucide-react";
 import type { MikrotikDevice, VpnProfile } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
@@ -450,6 +452,13 @@ export default function MikrotikPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => window.open(`/api/mikrotik/devices/${device.id}/onboarding-script`, "_blank")}
+                            data-testid={`button-download-script-${device.id}`}
+                          >
+                            <FileCode className="h-4 w-4 mr-2" />
+                            Download Onboarding Script
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => openEditDevice(device)}
                             data-testid={`button-edit-device-${device.id}`}
