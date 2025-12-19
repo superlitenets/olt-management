@@ -2169,9 +2169,19 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
         return res.status(404).json({ message: "VPN profile not found" });
       }
       
-      // Validate download token
-      if (!token || token !== profile.downloadToken) {
+      // Validate download token with timing-safe comparison
+      if (!token || !profile.downloadToken) {
         return res.status(401).json({ message: "Invalid or missing download token" });
+      }
+      
+      // Use crypto timing-safe comparison to prevent timing attacks
+      const crypto = await import("crypto");
+      const tokenBuffer = Buffer.from(String(token));
+      const storedBuffer = Buffer.from(profile.downloadToken);
+      
+      if (tokenBuffer.length !== storedBuffer.length || 
+          !crypto.timingSafeEqual(tokenBuffer, storedBuffer)) {
+        return res.status(401).json({ message: "Invalid download token" });
       }
       
       if (!profile.ovpnConfig) {
@@ -2185,6 +2195,40 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
     } catch (error) {
       console.error("Error downloading OVPN file:", error);
       res.status(500).json({ message: "Failed to download OVPN file" });
+    }
+  });
+  
+  // Regenerate download token for security
+  app.post("/api/vpn/profiles/:id/regenerate-token", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await storage.getVpnProfile(req.params.id);
+      if (!profile) {
+        return res.status(404).json({ message: "VPN profile not found" });
+      }
+      
+      const crypto = await import("crypto");
+      const downloadToken = crypto.randomBytes(32).toString("hex");
+      
+      // Update token and regenerate script with new token
+      await storage.updateVpnProfile(profile.id, { downloadToken });
+      
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const { generateVpnTunnelScript } = await import("./utils/mikrotik-script-generator");
+      const updatedProfile = await storage.getVpnProfile(profile.id);
+      
+      if (updatedProfile) {
+        const mikrotikScript = generateVpnTunnelScript(updatedProfile, { baseUrl });
+        await storage.updateVpnProfile(profile.id, {
+          mikrotikScript,
+          scriptGeneratedAt: new Date(),
+        });
+      }
+      
+      broadcast("vpnProfile:updated", updatedProfile);
+      res.json({ message: "Download token regenerated. MikroTik script updated with new token." });
+    } catch (error) {
+      console.error("Error regenerating download token:", error);
+      res.status(500).json({ message: "Failed to regenerate download token" });
     }
   });
 
@@ -2411,7 +2455,7 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
       }
 
       // Parse existing .ovpn to extract server info
-      const ovpnConfig = profile.ovpnConfig;
+      const ovpnConfig = profile.ovpnConfig || "";
       const remoteMatch = ovpnConfig.match(/remote\s+(\S+)\s+(\d+)/);
       const vpnServer = remoteMatch ? remoteMatch[1] : "your-vps-ip";
       const vpnPort = remoteMatch ? remoteMatch[2] : "1194";

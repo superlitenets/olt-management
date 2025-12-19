@@ -25,7 +25,13 @@ The frontend is built with React and TypeScript, using Tailwind CSS and shadcn/u
 - **TR-069/ACS Server**: Implements CWMP protocol for CPE management, supporting device auto-discovery, parameter get/set, firmware upgrades, remote actions, and configuration presets.
 - **Service Profiles**: Centralized management for bandwidth, VLAN, and QoS configurations.
 - **Multi-tenant Architecture**: Ensures tenant isolation and includes Role-Based Access Control (Super Admin, Tenant Admin, Operator).
-- **VPN Tunnels**: OpenVPN integration for secure OLT connections. Features include managing `.ovpn` configurations, auto-generating MikroTik onboarding scripts, downloading RouterOS scripts, associating VPN profiles with OLTs, and environment-aware connection management.
+- **VPN Tunnels**: OpenVPN integration for secure OLT connections. Features include:
+  - IP-based tunnel configuration: TR-069 server IPs and OLT management IPs for VPN routing
+  - Auto-generated MikroTik scripts that fetch OVPN configs from authenticated endpoints
+  - Firewall address lists and NAT rules for IP routing through VPN
+  - Token-authenticated OVPN download endpoint (timing-safe comparison, regeneratable tokens)
+  - Optional OVPN file upload for MikroTik auto-fetch
+  - Environment-aware connection management (Docker vs Replit)
 
 ### System Design Choices
 The system uses a shared module (`shared/`) for Drizzle database schemas and Zod validation schemas, ensuring consistency between frontend and backend. The API is structured logically around resources like OLTs, ONUs, TR-069, and VPNs.

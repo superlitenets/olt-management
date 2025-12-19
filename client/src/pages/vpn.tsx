@@ -99,6 +99,8 @@ export default function VpnPage() {
     ovpnConfig: "",
     username: "",
     password: "",
+    tr069Ips: "",
+    managementIps: "",
   });
 
   const { data: profiles, isLoading: profilesLoading } = useQuery<VpnProfile[]>({
@@ -111,7 +113,13 @@ export default function VpnPage() {
 
   const createProfileMutation = useMutation({
     mutationFn: async (data: typeof profileForm) => {
-      return apiRequest("POST", "/api/vpn/profiles", data);
+      const payload = {
+        ...data,
+        tr069Ips: data.tr069Ips ? data.tr069Ips.split(",").map(ip => ip.trim()).filter(Boolean) : [],
+        managementIps: data.managementIps ? data.managementIps.split(",").map(ip => ip.trim()).filter(Boolean) : [],
+        ovpnConfig: data.ovpnConfig || null,
+      };
+      return apiRequest("POST", "/api/vpn/profiles", payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vpn/profiles"] });
@@ -144,7 +152,13 @@ export default function VpnPage() {
 
   const updateProfileMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<typeof profileForm> }) => {
-      return apiRequest("PATCH", `/api/vpn/profiles/${id}`, data);
+      const payload = {
+        ...data,
+        tr069Ips: data.tr069Ips ? data.tr069Ips.split(",").map(ip => ip.trim()).filter(Boolean) : [],
+        managementIps: data.managementIps ? data.managementIps.split(",").map(ip => ip.trim()).filter(Boolean) : [],
+        ovpnConfig: data.ovpnConfig || null,
+      };
+      return apiRequest("PATCH", `/api/vpn/profiles/${id}`, payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vpn/profiles"] });
@@ -344,6 +358,8 @@ export default function VpnPage() {
       ovpnConfig: "",
       username: "",
       password: "",
+      tr069Ips: "",
+      managementIps: "",
     });
   };
 
@@ -352,7 +368,9 @@ export default function VpnPage() {
     setProfileForm({
       name: profile.name,
       description: profile.description || "",
-      ovpnConfig: profile.ovpnConfig,
+      ovpnConfig: profile.ovpnConfig || "",
+      tr069Ips: (profile.tr069Ips || []).join(", "),
+      managementIps: (profile.managementIps || []).join(", "),
       username: profile.username || "",
       password: profile.password || "",
     });
@@ -720,7 +738,33 @@ export default function VpnPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label>OpenVPN Configuration (.ovpn)</Label>
+              <Label htmlFor="tr069-ips">TR-069/ACS Server IPs</Label>
+              <Input
+                id="tr069-ips"
+                value={profileForm.tr069Ips}
+                onChange={(e) => setProfileForm({ ...profileForm, tr069Ips: e.target.value })}
+                placeholder="e.g., 192.168.1.100, 10.0.0.50"
+                data-testid="input-tr069-ips"
+              />
+              <p className="text-xs text-muted-foreground">
+                Comma-separated IP addresses of TR-069/ACS servers to route through VPN
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="management-ips">OLT Management IPs</Label>
+              <Input
+                id="management-ips"
+                value={profileForm.managementIps}
+                onChange={(e) => setProfileForm({ ...profileForm, managementIps: e.target.value })}
+                placeholder="e.g., 192.168.10.0/24, 10.10.0.1"
+                data-testid="input-management-ips"
+              />
+              <p className="text-xs text-muted-foreground">
+                Comma-separated OLT management IPs or subnets (CIDR notation supported)
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>OpenVPN Configuration (.ovpn) - Optional</Label>
               <div className="flex gap-2">
                 <Button
                   variant="outline"
@@ -739,17 +783,13 @@ export default function VpnPage() {
                   className="hidden"
                 />
               </div>
-              <Textarea
-                value={profileForm.ovpnConfig}
-                onChange={(e) => setProfileForm({ ...profileForm, ovpnConfig: e.target.value })}
-                placeholder="Paste OpenVPN configuration or upload a file..."
-                className="font-mono text-sm min-h-[200px]"
-                data-testid="textarea-ovpn-config"
-              />
               {profileForm.ovpnConfig && (
-                <p className="text-xs text-muted-foreground">
-                  Configuration loaded ({profileForm.ovpnConfig.split("\n").length} lines)
-                </p>
+                <div className="p-3 bg-muted rounded-md">
+                  <p className="text-xs text-muted-foreground">
+                    OVPN configuration loaded ({profileForm.ovpnConfig.split("\n").length} lines) - 
+                    MikroTik will fetch this file automatically
+                  </p>
+                </div>
               )}
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -795,7 +835,6 @@ export default function VpnPage() {
               onClick={handleProfileSubmit}
               disabled={
                 !profileForm.name ||
-                !profileForm.ovpnConfig ||
                 createProfileMutation.isPending ||
                 updateProfileMutation.isPending
               }
