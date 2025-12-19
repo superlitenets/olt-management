@@ -2034,11 +2034,24 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
       const tenantId = await resolveTenantId(req);
       const { tenantId: _, ...bodyWithoutTenant } = req.body;
       const data = insertVpnProfileSchema.parse({ ...bodyWithoutTenant, tenantId });
+      
+      // Generate a secure download token for OVPN fetch
+      const crypto = await import("crypto");
+      const downloadToken = crypto.randomBytes(32).toString("hex");
+      
       let profile = await storage.createVpnProfile(data);
+      
+      // Get base URL for script generation
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
       
       // Auto-generate MikroTik script for this VPN tunnel
       const { generateVpnTunnelScript } = await import("./utils/mikrotik-script-generator");
-      const mikrotikScript = generateVpnTunnelScript(profile);
+      
+      // First update with download token
+      profile = await storage.updateVpnProfile(profile.id, { downloadToken }) || profile;
+      
+      // Then generate script with the token
+      const mikrotikScript = generateVpnTunnelScript(profile, { baseUrl });
       profile = await storage.updateVpnProfile(profile.id, {
         mikrotikScript,
         scriptGeneratedAt: new Date(),
@@ -2055,7 +2068,7 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
     }
   });
 
-  app.patch("/api/vpn/profiles/:id", isAuthenticated, async (req, res) => {
+  app.patch("/api/vpn/profiles/:id", isAuthenticated, async (req: any, res) => {
     try {
       const data = insertVpnProfileSchema.partial().parse(req.body);
       let profile = await storage.updateVpnProfile(req.params.id, data);
@@ -2063,10 +2076,16 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
         return res.status(404).json({ message: "VPN profile not found" });
       }
       
-      // Regenerate MikroTik script if ovpnConfig or name changed
-      if (data.ovpnConfig !== undefined || data.name !== undefined) {
+      // Regenerate MikroTik script if IP addresses, ovpnConfig or name changed
+      const needsRegeneration = data.ovpnConfig !== undefined || 
+                                data.name !== undefined ||
+                                data.tr069Ips !== undefined ||
+                                data.managementIps !== undefined;
+      
+      if (needsRegeneration) {
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
         const { generateVpnTunnelScript } = await import("./utils/mikrotik-script-generator");
-        const mikrotikScript = generateVpnTunnelScript(profile);
+        const mikrotikScript = generateVpnTunnelScript(profile, { baseUrl });
         profile = await storage.updateVpnProfile(profile.id, {
           mikrotikScript,
           scriptGeneratedAt: new Date(),
@@ -2085,7 +2104,7 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
   });
   
   // Download MikroTik script for VPN tunnel
-  app.get("/api/vpn/profiles/:id/mikrotik-script", isAuthenticated, async (req, res) => {
+  app.get("/api/vpn/profiles/:id/mikrotik-script", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await storage.getVpnProfile(req.params.id);
       if (!profile) {
@@ -2095,8 +2114,9 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
       // Use stored script or regenerate if not available
       let script = profile.mikrotikScript;
       if (!script) {
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
         const { generateVpnTunnelScript } = await import("./utils/mikrotik-script-generator");
-        script = generateVpnTunnelScript(profile);
+        script = generateVpnTunnelScript(profile, { baseUrl });
         
         // Store the generated script for future use
         await storage.updateVpnProfile(profile.id, {
@@ -2116,15 +2136,16 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
   });
   
   // Regenerate MikroTik script for VPN tunnel
-  app.post("/api/vpn/profiles/:id/regenerate-script", isAuthenticated, async (req, res) => {
+  app.post("/api/vpn/profiles/:id/regenerate-script", isAuthenticated, async (req: any, res) => {
     try {
       const profile = await storage.getVpnProfile(req.params.id);
       if (!profile) {
         return res.status(404).json({ message: "VPN profile not found" });
       }
       
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
       const { generateVpnTunnelScript } = await import("./utils/mikrotik-script-generator");
-      const mikrotikScript = generateVpnTunnelScript(profile);
+      const mikrotikScript = generateVpnTunnelScript(profile, { baseUrl });
       const updatedProfile = await storage.updateVpnProfile(profile.id, {
         mikrotikScript,
         scriptGeneratedAt: new Date(),
@@ -2135,6 +2156,35 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
     } catch (error) {
       console.error("Error regenerating MikroTik script:", error);
       res.status(500).json({ message: "Failed to regenerate MikroTik script" });
+    }
+  });
+  
+  // Download OVPN file (token-authenticated for MikroTik fetch)
+  app.get("/api/vpn/profiles/:id/ovpn", async (req, res) => {
+    try {
+      const { token } = req.query;
+      const profile = await storage.getVpnProfile(req.params.id);
+      
+      if (!profile) {
+        return res.status(404).json({ message: "VPN profile not found" });
+      }
+      
+      // Validate download token
+      if (!token || token !== profile.downloadToken) {
+        return res.status(401).json({ message: "Invalid or missing download token" });
+      }
+      
+      if (!profile.ovpnConfig) {
+        return res.status(404).json({ message: "No OVPN configuration available" });
+      }
+      
+      const sanitizedName = profile.name.replace(/[^a-zA-Z0-9_-]/g, "_");
+      res.setHeader("Content-Type", "application/x-openvpn-profile");
+      res.setHeader("Content-Disposition", `attachment; filename="ovpn-${sanitizedName}.ovpn"`);
+      res.send(profile.ovpnConfig);
+    } catch (error) {
+      console.error("Error downloading OVPN file:", error);
+      res.status(500).json({ message: "Failed to download OVPN file" });
     }
   });
 
