@@ -475,7 +475,7 @@ export async function registerRoutes(
             console.log(`[test-connection] Telnet: Attempting real connection to ${olt.ipAddress}:${olt.sshPort || 23}`);
             const testResult = await driver.executeCommands(["display version"]);
             results.telnet = testResult.success;
-            console.log(`[test-connection] Telnet result: ${testResult.success}, output: ${testResult.output?.substring(0, 200)}`);
+            console.log(`[test-connection] Telnet result: ${testResult.success}`);
             if (!testResult.success && testResult.error) {
               results.errors.push(`Telnet: ${testResult.error}`);
             }
@@ -1216,14 +1216,10 @@ export async function registerRoutes(
           try {
             const ponPort = onu.ponPort || 0;
             const onuIdNum = onu.onuId || 1;
-            const data = await snmpClient.pollOnuOpticalPower(ponPort, onuIdNum);
+            const data = await snmpClient.getOnuOpticalPower(ponPort, onuIdNum);
 
             await storage.updateOnu(onuId, {
-              status: data.status || onu.status,
-              rxPower: data.rxPower ?? onu.rxPower,
-              txPower: data.txPower ?? onu.txPower,
-              distance: data.distance ?? onu.distance,
-              lastSeen: new Date(),
+              status: "online",
             });
 
             results.push({ id: onuId, success: true });
@@ -1252,40 +1248,43 @@ export async function registerRoutes(
       }
 
       const results: { id: string; success: boolean; error?: string }[] = [];
-      const simulationMode = process.env.OLT_SIMULATION_MODE !== "false";
 
       for (const onuId of onuIds) {
         try {
           const onu = await storage.getOnu(onuId);
-          if (!onu || !onu.oltId) {
-            results.push({ id: onuId, success: false, error: "ONU not found or not linked to OLT" });
+          if (!onu) {
+            results.push({ id: onuId, success: false, error: "ONU not found" });
             continue;
           }
 
-          const olt = await storage.getOlt(onu.oltId);
-          if (!olt) {
-            results.push({ id: onuId, success: false, error: "Parent OLT not found" });
+          // Find linked TR-069 device for this ONU
+          const linkedDevice = await storage.getTr069DeviceByOnuId(onuId);
+          
+          if (!linkedDevice) {
+            results.push({ id: onuId, success: false, error: "No TR-069 device linked to this ONU" });
             continue;
           }
 
-          const { createOltDriver } = await import("./drivers/olt-driver");
-          const driver = createOltDriver(olt, simulationMode);
-          const result = await driver.rebootOnu(onu);
+          // Create TR-069 reboot task
+          await storage.createTr069Task({
+            deviceId: linkedDevice.id,
+            taskType: "reboot",
+            status: "pending",
+            parameters: {},
+          });
 
-          if (result.success) {
-            // Record reboot event
-            await storage.createOnuEvent({
-              onuId: onu.id,
-              oltId: olt.id,
-              tenantId: onu.tenantId,
-              eventType: "rebooted",
-              previousStatus: onu.status || "unknown",
-              newStatus: onu.status || "unknown",
-              details: `Batch reboot initiated`,
-            });
-          }
+          // Record reboot event
+          await storage.createOnuEvent({
+            onuId: onu.id,
+            oltId: onu.oltId,
+            tenantId: onu.tenantId,
+            eventType: "rebooted",
+            previousStatus: onu.status || "unknown",
+            newStatus: onu.status || "unknown",
+            details: `TR-069 batch reboot task queued`,
+          });
 
-          results.push({ id: onuId, success: result.success, error: result.success ? undefined : result.message });
+          results.push({ id: onuId, success: true });
         } catch (e) {
           results.push({ id: onuId, success: false, error: e instanceof Error ? e.message : "Unknown error" });
         }
@@ -1320,7 +1319,6 @@ export async function registerRoutes(
 
       const successCount = results.filter(r => r.success).length;
       broadcast("onus:batchDeleted", { count: successCount });
-      queryClient.invalidateQueries({ queryKey: ["/api/onus"] });
       res.json({ results, successCount, totalCount: onuIds.length });
     } catch (error) {
       console.error("Batch delete error:", error);
@@ -1482,236 +1480,10 @@ export async function registerRoutes(
     }
   });
 
-  // Provision ONU with full service profile (VLAN, bandwidth, etc.)
-  app.post("/api/onus/:id/provision", isAuthenticated, async (req, res) => {
-    try {
-      const { vlan, gemPort, tcont } = req.body;
-      
-      const onu = await storage.getOnu(req.params.id);
-      if (!onu) {
-        return res.status(404).json({ message: "ONU not found" });
-      }
-      
-      if (!onu.oltId) {
-        return res.status(400).json({ message: "ONU is not associated with an OLT" });
-      }
-      
-      const olt = await storage.getOlt(onu.oltId);
-      if (!olt) {
-        return res.status(404).json({ message: "Parent OLT not found" });
-      }
-      
-      // Get service profile if assigned
-      let serviceProfile = undefined;
-      if (onu.serviceProfileId) {
-        serviceProfile = await storage.getServiceProfile(onu.serviceProfileId);
-      }
-      
-      // Use OLT driver to generate and execute provisioning commands
-      const { createOltDriver } = await import("./drivers/olt-driver");
-      const simulationMode = process.env.OLT_SIMULATION_MODE !== "false";
-      const driver = createOltDriver(olt, simulationMode);
-      
-      const result = await driver.provisionOnu({
-        onu,
-        olt,
-        serviceProfile,
-        vlan: vlan || serviceProfile?.internetVlan || 100,
-        gemPort: gemPort || 1,
-        tcont: tcont || 1,
-      });
-      
-      // Log the provisioning event
-      broadcast("onu:provisioned", { 
-        onuId: onu.id, 
-        oltId: olt.id,
-        serviceProfileId: onu.serviceProfileId,
-        commands: result.commands,
-        timestamp: new Date().toISOString()
-      });
-      
-      // Update ONU status
-      await storage.updateOnu(onu.id, {
-        status: "online",
-      });
-      
-      res.json({ 
-        message: result.message,
-        success: result.success,
-        commands: result.commands,
-        vendor: olt.vendor,
-      });
-    } catch (error) {
-      console.error("Error provisioning ONU:", error);
-      res.status(500).json({ message: "Failed to provision ONU" });
-    }
-  });
-
-  // Deprovision (remove) ONU from OLT
-  app.post("/api/onus/:id/deprovision", isAuthenticated, async (req, res) => {
-    try {
-      const onu = await storage.getOnu(req.params.id);
-      if (!onu) {
-        return res.status(404).json({ message: "ONU not found" });
-      }
-      
-      if (!onu.oltId) {
-        return res.status(400).json({ message: "ONU is not associated with an OLT" });
-      }
-      
-      const olt = await storage.getOlt(onu.oltId);
-      if (!olt) {
-        return res.status(404).json({ message: "Parent OLT not found" });
-      }
-      
-      // Use OLT driver to generate and execute deprovisioning commands
-      const { createOltDriver } = await import("./drivers/olt-driver");
-      const simulationMode = process.env.OLT_SIMULATION_MODE !== "false";
-      const driver = createOltDriver(olt, simulationMode);
-      
-      const result = await driver.deprovisionOnu(onu);
-      
-      // Log the deprovisioning event
-      broadcast("onu:deprovisioned", { 
-        onuId: onu.id, 
-        oltId: olt.id,
-        commands: result.commands,
-        timestamp: new Date().toISOString()
-      });
-      
-      // Update ONU status
-      await storage.updateOnu(onu.id, {
-        status: "offline",
-      });
-      
-      res.json({ 
-        message: result.message,
-        success: result.success,
-        commands: result.commands,
-        vendor: olt.vendor,
-      });
-    } catch (error) {
-      console.error("Error deprovisioning ONU:", error);
-      res.status(500).json({ message: "Failed to deprovision ONU" });
-    }
-  });
-
-  // Reboot ONU via OLT
-  app.post("/api/onus/:id/reboot", isAuthenticated, async (req, res) => {
-    try {
-      const onu = await storage.getOnu(req.params.id);
-      if (!onu) {
-        return res.status(404).json({ message: "ONU not found" });
-      }
-      
-      if (!onu.oltId) {
-        return res.status(400).json({ message: "ONU is not associated with an OLT" });
-      }
-      
-      const olt = await storage.getOlt(onu.oltId);
-      if (!olt) {
-        return res.status(404).json({ message: "Parent OLT not found" });
-      }
-      
-      // Use OLT driver to generate and execute reboot commands
-      const { createOltDriver } = await import("./drivers/olt-driver");
-      const simulationMode = process.env.OLT_SIMULATION_MODE !== "false";
-      const driver = createOltDriver(olt, simulationMode);
-      
-      const result = await driver.rebootOnu(onu);
-      
-      // Log the reboot event
-      broadcast("onu:rebooted", { 
-        onuId: onu.id, 
-        oltId: olt.id,
-        commands: result.commands,
-        timestamp: new Date().toISOString()
-      });
-      
-      res.json({ 
-        message: result.message,
-        success: result.success,
-        commands: result.commands,
-        vendor: olt.vendor,
-      });
-    } catch (error) {
-      console.error("Error rebooting ONU:", error);
-      res.status(500).json({ message: "Failed to reboot ONU" });
-    }
-  });
-
-  // Get OLT CLI commands preview (for viewing what would be sent)
-  app.post("/api/onus/:id/preview-commands", isAuthenticated, async (req, res) => {
-    try {
-      const { action, vlan, gemPort, tcont } = req.body;
-      
-      const onu = await storage.getOnu(req.params.id);
-      if (!onu) {
-        return res.status(404).json({ message: "ONU not found" });
-      }
-      
-      if (!onu.oltId) {
-        return res.status(400).json({ message: "ONU is not associated with an OLT" });
-      }
-      
-      const olt = await storage.getOlt(onu.oltId);
-      if (!olt) {
-        return res.status(404).json({ message: "Parent OLT not found" });
-      }
-      
-      let serviceProfile = undefined;
-      if (onu.serviceProfileId) {
-        serviceProfile = await storage.getServiceProfile(onu.serviceProfileId);
-      }
-      
-      const { createOltDriver } = await import("./drivers/olt-driver");
-      // Always use simulation mode for preview - we only want to see the commands
-      const driver = createOltDriver(olt, true);
-      
-      let commands: string[] = [];
-      
-      switch (action) {
-        case "provision":
-          commands = [
-            ...driver.buildAddOnuCommands({ onu, olt, serviceProfile, vlan, gemPort, tcont }),
-            ...driver.buildServiceProfileCommands({ onu, olt, serviceProfile, vlan, gemPort, tcont }),
-            ...driver.buildVlanCommands({ onu, olt, serviceProfile, vlan, gemPort, tcont }),
-          ];
-          break;
-        case "deprovision":
-          commands = driver.buildRemoveOnuCommands(onu);
-          break;
-        case "tr069":
-          if (olt.acsEnabled && olt.acsUrl) {
-            commands = driver.buildTr069Commands({
-              onu,
-              olt,
-              acsUrl: olt.acsUrl,
-              acsUsername: olt.acsUsername || undefined,
-              acsPassword: olt.acsPassword || undefined,
-              periodicInformInterval: olt.acsPeriodicInformInterval || 3600,
-            });
-          }
-          break;
-        case "reboot":
-          commands = driver.buildRebootOnuCommands(onu);
-          break;
-        default:
-          return res.status(400).json({ message: "Invalid action. Use: provision, deprovision, tr069, reboot" });
-      }
-      
-      res.json({
-        vendor: olt.vendor,
-        oltName: olt.name,
-        oltIp: olt.ipAddress,
-        action,
-        commands,
-      });
-    } catch (error) {
-      console.error("Error previewing commands:", error);
-      res.status(500).json({ message: "Failed to preview commands" });
-    }
-  });
+  // NOTE: OMCI provisioning endpoints removed - all provisioning now handled via TR-069/ACS
+  // Use POST /api/onus/:id/tr069/tasks with taskType: "set_parameter_values" for configuration
+  // Use POST /api/onus/:id/tr069/tasks with taskType: "reboot" for rebooting
+  // Use POST /api/onus/:id/tr069/tasks with taskType: "factory_reset" for factory reset
 
   // Service Profile routes
   app.get("/api/service-profiles", isAuthenticated, async (req, res) => {

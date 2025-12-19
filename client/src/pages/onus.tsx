@@ -217,37 +217,6 @@ export default function OnusPage() {
     },
   });
 
-  const restartMutation = useMutation({
-    mutationFn: async (onuId: string) => {
-      return apiRequest("POST", `/api/onus/${onuId}/restart`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/onus"] });
-      toast({
-        title: "ONU Restarted",
-        description: "The ONU restart command has been sent",
-      });
-    },
-    onError: (error: Error) => {
-      if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
-        return;
-      }
-      toast({
-        title: "Error",
-        description: "Failed to restart ONU",
-        variant: "destructive",
-      });
-    },
-  });
-
   const provisionTr069Mutation = useMutation({
     mutationFn: async (onuId: string) => {
       const res = await apiRequest("POST", `/api/onus/${onuId}/provision-tr069`);
@@ -280,66 +249,18 @@ export default function OnusPage() {
     },
   });
 
-  const provisionOnuMutation = useMutation({
-    mutationFn: async (onuId: string) => {
-      const res = await apiRequest("POST", `/api/onus/${onuId}/provision`);
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/onus"] });
-      toast({
-        title: "ONU Provisioned",
-        description: `${data.commands?.length || 0} commands sent to ${data.vendor || 'OLT'}`,
-      });
-    },
-    onError: (error: Error) => {
-      if (isUnauthorizedError(error)) {
-        window.location.href = "/api/login";
-        return;
-      }
-      toast({
-        title: "Error",
-        description: error.message || "Failed to provision ONU",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const deprovisionOnuMutation = useMutation({
-    mutationFn: async (onuId: string) => {
-      const res = await apiRequest("POST", `/api/onus/${onuId}/deprovision`);
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/onus"] });
-      toast({
-        title: "ONU Deprovisioned",
-        description: `${data.commands?.length || 0} commands sent to ${data.vendor || 'OLT'}`,
-      });
-    },
-    onError: (error: Error) => {
-      if (isUnauthorizedError(error)) {
-        window.location.href = "/api/login";
-        return;
-      }
-      toast({
-        title: "Error",
-        description: error.message || "Failed to deprovision ONU",
-        variant: "destructive",
-      });
-    },
-  });
-
   const rebootOnuMutation = useMutation({
     mutationFn: async (onuId: string) => {
-      const res = await apiRequest("POST", `/api/onus/${onuId}/reboot`);
-      return res.json();
+      return apiRequest("POST", `/api/onus/${onuId}/tr069/tasks`, {
+        taskType: "reboot",
+        parameters: {}
+      });
     },
-    onSuccess: (data: any) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/onus"] });
       toast({
-        title: "ONU Reboot Initiated",
-        description: `Reboot command sent to ${data.vendor || 'OLT'}`,
+        title: "Reboot Queued",
+        description: "TR-069 reboot task has been scheduled",
       });
     },
     onError: (error: Error) => {
@@ -349,74 +270,25 @@ export default function OnusPage() {
       }
       toast({
         title: "Error",
-        description: error.message || "Failed to reboot ONU",
+        description: error.message || "Failed to queue reboot task",
         variant: "destructive",
       });
     },
   });
 
-  // Comprehensive provisioning - combines OMCI (Layer 2) and TR-069 (Layer 3)
-  const fullProvisionMutation = useMutation({
+  const factoryResetMutation = useMutation({
     mutationFn: async (onuId: string) => {
-      let omciData: { commands?: string[]; vendor?: string; error?: string } | null = null;
-      let tr069Data: { commands?: string[]; vendor?: string; error?: string } | null = null;
-      let omciError: string | null = null;
-      let tr069Error: string | null = null;
-      
-      // First, run OMCI provisioning (Layer 2: VLAN, GEM ports)
-      try {
-        const omciRes = await apiRequest("POST", `/api/onus/${onuId}/provision`);
-        omciData = await omciRes.json() as { commands?: string[]; vendor?: string };
-      } catch (err) {
-        omciError = err instanceof Error ? err.message : "OMCI provisioning failed";
-      }
-      
-      // Then, run TR-069 provisioning (Layer 3: ACS settings) - even if OMCI failed
-      try {
-        const tr069Res = await apiRequest("POST", `/api/onus/${onuId}/provision-tr069`);
-        tr069Data = await tr069Res.json() as { commands?: string[]; vendor?: string };
-      } catch (err) {
-        tr069Error = err instanceof Error ? err.message : "TR-069 provisioning failed";
-      }
-      
-      return {
-        omci: omciData,
-        tr069: tr069Data,
-        omciError,
-        tr069Error,
-        omciSuccess: !omciError,
-        tr069Success: !tr069Error,
-        totalCommands: (omciData?.commands?.length || 0) + (tr069Data?.commands?.length || 0)
-      };
+      return apiRequest("POST", `/api/onus/${onuId}/tr069/tasks`, {
+        taskType: "factory_reset",
+        parameters: {}
+      });
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/onus"] });
-      
-      // Handle partial failures with detailed feedback
-      if (data.omciSuccess && data.tr069Success) {
-        toast({
-          title: "Full Provisioning Complete",
-          description: `${data.totalCommands} commands sent (OMCI: ${data.omci?.commands?.length || 0}, TR-069: ${data.tr069?.commands?.length || 0})`,
-        });
-      } else if (data.omciSuccess && !data.tr069Success) {
-        toast({
-          title: "Partial Provisioning",
-          description: `OMCI succeeded (${data.omci?.commands?.length || 0} commands), but TR-069 failed: ${data.tr069Error}`,
-          variant: "destructive",
-        });
-      } else if (!data.omciSuccess && data.tr069Success) {
-        toast({
-          title: "Partial Provisioning",
-          description: `OMCI failed: ${data.omciError}, but TR-069 succeeded (${data.tr069?.commands?.length || 0} commands)`,
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Provisioning Failed",
-          description: `OMCI: ${data.omciError}. TR-069: ${data.tr069Error}`,
-          variant: "destructive",
-        });
-      }
+      toast({
+        title: "Factory Reset Queued",
+        description: "TR-069 factory reset task has been scheduled",
+      });
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
@@ -424,8 +296,8 @@ export default function OnusPage() {
         return;
       }
       toast({
-        title: "Provisioning Error",
-        description: error.message || "Failed to complete full provisioning",
+        title: "Error",
+        description: error.message || "Failed to queue factory reset task",
         variant: "destructive",
       });
     },
@@ -519,28 +391,6 @@ export default function OnusPage() {
 
   const clearSelection = () => {
     setSelectedOnuIds(new Set());
-  };
-
-  const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
-  const [previewCommands, setPreviewCommands] = useState<{ vendor: string; commands: string[]; action: string } | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-
-  const previewCommandsFn = async (onuId: string, action: string) => {
-    setPreviewLoading(true);
-    try {
-      const res = await apiRequest("POST", `/api/onus/${onuId}/preview-commands`, { action });
-      const response = await res.json() as { vendor: string; commands: string[]; action: string };
-      setPreviewCommands({ vendor: response.vendor, commands: response.commands, action });
-      setPreviewDialogOpen(true);
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to preview commands",
-        variant: "destructive",
-      });
-    } finally {
-      setPreviewLoading(false);
-    }
   };
 
   const filteredOnus = onus?.filter((onu) => {
@@ -869,34 +719,14 @@ export default function OnusPage() {
                               <Eye className="h-4 w-4 mr-2" />
                               View Details
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => previewCommandsFn(onu.id, "provision")}>
-                              <FileText className="h-4 w-4 mr-2" />
-                              Preview CLI Commands
-                            </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => fullProvisionMutation.mutate(onu.id)}
-                              disabled={fullProvisionMutation.isPending}
-                              data-testid={`button-full-provision-${onu.id}`}
-                            >
-                              <Zap className="h-4 w-4 mr-2" />
-                              Full Provisioning (OMCI + TR-069)
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => provisionOnuMutation.mutate(onu.id)}
-                              disabled={provisionOnuMutation.isPending}
-                              data-testid={`button-provision-${onu.id}`}
-                            >
-                              <Download className="h-4 w-4 mr-2" />
-                              Provision Service (OMCI)
-                            </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => provisionTr069Mutation.mutate(onu.id)}
                               disabled={provisionTr069Mutation.isPending}
                               data-testid={`button-provision-tr069-${onu.id}`}
                             >
                               <Settings className="h-4 w-4 mr-2" />
-                              Provision TR-069 Only
+                              Configure via TR-069
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => rebootOnuMutation.mutate(onu.id)}
@@ -904,17 +734,21 @@ export default function OnusPage() {
                               data-testid={`button-reboot-${onu.id}`}
                             >
                               <RotateCcw className="h-4 w-4 mr-2" />
-                              Reboot ONU
+                              Reboot (TR-069)
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
-                              onClick={() => deprovisionOnuMutation.mutate(onu.id)}
-                              disabled={deprovisionOnuMutation.isPending}
+                              onClick={() => {
+                                if (confirm("Are you sure you want to factory reset this ONU? This will erase all configuration.")) {
+                                  factoryResetMutation.mutate(onu.id);
+                                }
+                              }}
+                              disabled={factoryResetMutation.isPending}
                               className="text-destructive"
-                              data-testid={`button-deprovision-${onu.id}`}
+                              data-testid={`button-factory-reset-${onu.id}`}
                             >
                               <Power className="h-4 w-4 mr-2" />
-                              Deprovision
+                              Factory Reset (TR-069)
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -1427,49 +1261,6 @@ export default function OnusPage() {
               </div>
             </Tabs>
           )}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5" />
-              CLI Commands Preview
-            </DialogTitle>
-            <DialogDescription>
-              {previewCommands?.vendor && (
-                <span className="flex items-center gap-2">
-                  <Badge variant="outline">{previewCommands.vendor.toUpperCase()}</Badge>
-                  <span className="capitalize">{previewCommands.action} Commands</span>
-                </span>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          {previewCommands && (
-            <div className="space-y-4">
-              <div className="bg-muted rounded-md p-4 font-mono text-sm overflow-x-auto">
-                {previewCommands.commands.map((cmd, idx) => (
-                  <div key={idx} className="py-1 border-b border-border/50 last:border-b-0">
-                    <span className="text-muted-foreground mr-3">{idx + 1}.</span>
-                    <span>{cmd}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Activity className="h-4 w-4" />
-                <span>{previewCommands.commands.length} commands would be sent to the OLT</span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Note: These commands will be sent to the OLT via SSH when executed.
-              </p>
-            </div>
-          )}
-          <div className="flex justify-end gap-3 pt-4">
-            <Button variant="outline" onClick={() => setPreviewDialogOpen(false)}>
-              Close
-            </Button>
-          </div>
         </DialogContent>
       </Dialog>
 

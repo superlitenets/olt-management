@@ -66,7 +66,6 @@ export default function OnuDetailPage() {
   const [voipDialogOpen, setVoipDialogOpen] = useState(false);
   const [vlanDialogOpen, setVlanDialogOpen] = useState(false);
   const [parametersDialogOpen, setParametersDialogOpen] = useState(false);
-  const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
   const [wifiBandTab, setWifiBandTab] = useState<"2.4ghz" | "5ghz">("2.4ghz");
 
   const [wifiConfig, setWifiConfig] = useState({
@@ -116,7 +115,6 @@ export default function OnuDetailPage() {
   const [newParameterValue, setNewParameterValue] = useState("");
   const [newParameterType, setNewParameterType] = useState<string>("xsd:string");
   const [fetchingParams, setFetchingParams] = useState(false);
-  const [previewCommands, setPreviewCommands] = useState<{ vendor: string; commands: string[]; action: string } | null>(null);
 
   const { data: onu, isLoading: onuLoading } = useQuery<Onu>({
     queryKey: ["/api/onus", id],
@@ -198,82 +196,24 @@ export default function OnuDetailPage() {
     },
   });
 
-  const provisionOnuMutation = useMutation({
+  const factoryResetMutation = useMutation({
     mutationFn: async (onuId: string) => {
-      return apiRequest("POST", `/api/onus/${onuId}/provision`);
+      return apiRequest("POST", `/api/onus/${onuId}/tr069/tasks`, {
+        taskType: "factory_reset",
+        parameters: {}
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/onus", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onus", id, "tr069", "tasks"] });
       toast({
-        title: "ONU Provisioned",
-        description: "OMCI service profile has been applied",
+        title: "Factory Reset Queued",
+        description: "TR-069 factory reset task has been scheduled",
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Provisioning Failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  const provisionTr069Mutation = useMutation({
-    mutationFn: async (onuId: string) => {
-      return apiRequest("POST", `/api/onus/${onuId}/provision-tr069`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/onus", id] });
-      toast({
-        title: "TR-069 Provisioned",
-        description: "ACS settings have been pushed to the ONU",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "TR-069 Provisioning Failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  const fullProvisionMutation = useMutation({
-    mutationFn: async (onuId: string) => {
-      await apiRequest("POST", `/api/onus/${onuId}/provision`);
-      await apiRequest("POST", `/api/onus/${onuId}/provision-tr069`);
-      return true;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/onus", id] });
-      toast({
-        title: "Full Provisioning Complete",
-        description: "Both OMCI and TR-069 configurations have been applied",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Provisioning Failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  const deprovisionOnuMutation = useMutation({
-    mutationFn: async (onuId: string) => {
-      return apiRequest("POST", `/api/onus/${onuId}/deprovision`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/onus", id] });
-      toast({
-        title: "ONU Deprovisioned",
-        description: "Service configuration has been removed",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Deprovision Failed",
+        title: "Factory Reset Failed",
         description: error.message,
         variant: "destructive",
       });
@@ -282,13 +222,17 @@ export default function OnuDetailPage() {
 
   const rebootOnuMutation = useMutation({
     mutationFn: async (onuId: string) => {
-      return apiRequest("POST", `/api/onus/${onuId}/reboot`);
+      return apiRequest("POST", `/api/onus/${onuId}/tr069/tasks`, {
+        taskType: "reboot",
+        parameters: {}
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/onus", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onus", id, "tr069", "tasks"] });
       toast({
-        title: "Reboot Initiated",
-        description: "ONU reboot command has been sent",
+        title: "Reboot Queued",
+        description: "TR-069 reboot task has been scheduled",
       });
     },
     onError: (error: Error) => {
@@ -319,21 +263,6 @@ export default function OnuDetailPage() {
       });
     },
   });
-
-  const previewCommandsFn = async (onuId: string, action: string) => {
-    try {
-      const res = await apiRequest("POST", `/api/onus/${onuId}/preview-commands`, { action });
-      const response = await res.json() as { vendor: string; commands: string[]; action: string };
-      setPreviewCommands({ vendor: response.vendor, commands: response.commands, action });
-      setPreviewDialogOpen(true);
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to preview commands",
-        variant: "destructive",
-      });
-    }
-  };
 
   const getOltName = (oltId: string) => {
     return olts?.find((o) => o.id === oltId)?.name || "Unknown";
@@ -694,77 +623,6 @@ export default function OnuDetailPage() {
                   </div>
                 </>
               )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Settings className="h-5 w-5" />
-                OMCI Provisioning
-              </CardTitle>
-              <CardDescription>
-                Layer 2 service provisioning via OLT
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <Button
-                  variant="outline"
-                  className="flex flex-col items-center gap-2 h-auto py-4"
-                  onClick={() => fullProvisionMutation.mutate(onu.id)}
-                  disabled={fullProvisionMutation.isPending}
-                  data-testid="button-full-provision"
-                >
-                  <Zap className="h-5 w-5" />
-                  <span className="text-xs">Full Provision</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  className="flex flex-col items-center gap-2 h-auto py-4"
-                  onClick={() => provisionOnuMutation.mutate(onu.id)}
-                  disabled={provisionOnuMutation.isPending}
-                  data-testid="button-provision-omci"
-                >
-                  <Download className="h-5 w-5" />
-                  <span className="text-xs">OMCI Only</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  className="flex flex-col items-center gap-2 h-auto py-4"
-                  onClick={() => provisionTr069Mutation.mutate(onu.id)}
-                  disabled={provisionTr069Mutation.isPending}
-                  data-testid="button-provision-tr069"
-                >
-                  <Settings className="h-5 w-5" />
-                  <span className="text-xs">TR-069 Only</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  className="flex flex-col items-center gap-2 h-auto py-4"
-                  onClick={() => previewCommandsFn(onu.id, "provision")}
-                  data-testid="button-preview-commands"
-                >
-                  <FileText className="h-5 w-5" />
-                  <span className="text-xs">Preview CLI</span>
-                </Button>
-              </div>
-              <div className="mt-3">
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => {
-                    if (confirm("Are you sure you want to deprovision this ONU? This will remove its service configuration.")) {
-                      deprovisionOnuMutation.mutate(onu.id);
-                    }
-                  }}
-                  disabled={deprovisionOnuMutation.isPending}
-                  data-testid="button-deprovision"
-                >
-                  <Power className="h-4 w-4 mr-2" />
-                  {deprovisionOnuMutation.isPending ? "Deprovisioning..." : "Deprovision"}
-                </Button>
-              </div>
             </CardContent>
           </Card>
 
@@ -1475,34 +1333,6 @@ export default function OnuDetailPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5" />
-              CLI Commands Preview
-            </DialogTitle>
-            <DialogDescription>
-              {previewCommands?.vendor && (
-                <span className="flex items-center gap-2">
-                  <Badge variant="outline">{previewCommands.vendor.toUpperCase()}</Badge>
-                  <span className="capitalize">{previewCommands.action} Commands</span>
-                </span>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          {previewCommands && (
-            <div className="bg-muted rounded-md p-4 font-mono text-sm overflow-x-auto">
-              {previewCommands.commands.map((cmd, idx) => (
-                <div key={idx} className="py-1 border-b border-border/50 last:border-b-0">
-                  <span className="text-muted-foreground mr-3">{idx + 1}.</span>
-                  <span>{cmd}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

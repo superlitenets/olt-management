@@ -28,10 +28,13 @@ A comprehensive OLT (Optical Line Terminal) Management System for multi-vendor G
 - Connection status monitoring
 - PON port configuration
 
-### 2. ONU Management
-- Discovery and provisioning via OMCI
-- Service profile assignment
+### 2. ONU Management (TR-069 Only)
+- **All provisioning is done via TR-069/ACS** (OMCI provisioning removed)
+- ONU detail page at `/onus/:id` with comprehensive configuration options
+- TR-069 task-based operations: WiFi, VoIP, WAN/VLAN configuration
+- Remote reboot and factory reset via TR-069 tasks
 - Status monitoring (power levels, distance)
+- Service profile assignment for bandwidth/QoS reference
 
 ### 3. TR-069/ACS Server
 - CWMP protocol support for CPE management
@@ -109,7 +112,7 @@ A comprehensive OLT (Optical Line Terminal) Management System for multi-vendor G
 - `POST /api/olts/:id/save-config` - Save OLT configuration
 - `PATCH /api/olts/:id/acs-settings` - Update TR-069/ACS settings
 
-### ONU Management
+### ONU Management (TR-069 Only)
 - `GET /api/onus` - List all ONUs
 - `POST /api/onus` - Create ONU
 - `GET /api/onus/:id` - Get ONU details
@@ -119,12 +122,9 @@ A comprehensive OLT (Optical Line Terminal) Management System for multi-vendor G
 - `GET /api/onus/:id/tr069` - Get linked TR-069 device
 - `POST /api/onus/:id/tr069/link` - Link ONU to TR-069 device
 - `GET /api/onus/:id/tr069/tasks` - Get TR-069 tasks for ONU
-- `POST /api/onus/:id/tr069/tasks` - Create TR-069 task for ONU
-- `POST /api/onus/:id/provision` - Provision ONU with service profile (VLAN, bandwidth)
+- `POST /api/onus/:id/tr069/tasks` - Create TR-069 task for ONU (reboot, factory_reset, set_parameter_values, get_parameter_values)
 - `POST /api/onus/:id/provision-tr069` - Provision ONU with TR-069/ACS settings from parent OLT
-- `POST /api/onus/:id/deprovision` - Remove ONU configuration from OLT
-- `POST /api/onus/:id/reboot` - Reboot ONU via OLT CLI
-- `POST /api/onus/:id/preview-commands` - Preview CLI commands that would be sent to OLT
+- Note: OMCI provisioning endpoints removed - use TR-069 tasks for all configuration
 
 ### TR-069/ACS
 - `GET /api/tr069/devices` - List managed devices
