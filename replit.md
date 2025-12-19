@@ -151,10 +151,11 @@ A comprehensive OLT (Optical Line Terminal) Management System for multi-vendor G
 
 ### MikroTik Management
 - `GET /api/mikrotik/devices` - List all MikroTik devices
-- `POST /api/mikrotik/devices` - Create MikroTik device
+- `POST /api/mikrotik/devices` - Create MikroTik device (auto-generates onboarding script)
 - `GET /api/mikrotik/devices/:id` - Get MikroTik device details
-- `PATCH /api/mikrotik/devices/:id` - Update MikroTik device
+- `PATCH /api/mikrotik/devices/:id` - Update MikroTik device (regenerates script if VPN profile changes)
 - `DELETE /api/mikrotik/devices/:id` - Delete MikroTik device
+- `POST /api/mikrotik/devices/:id/regenerate-script` - Manually regenerate onboarding script
 - `GET /api/mikrotik/devices/:id/onboarding-script` - Download RouterOS onboarding script (.rsc)
 
 ### Other Endpoints
@@ -281,6 +282,8 @@ Layer 2/VLAN Configuration:
 - `Device.Ethernet.Interface.1.Enable` - Enable Ethernet interface ("1" or "0")
 
 ## Recent Changes
+- December 2025: Auto-generate MikroTik onboarding scripts - Scripts are now auto-generated when devices are created/updated, stored in DB, with regenerate-on-demand endpoint
+- December 2025: Docker OpenVPN support - Dockerfile now includes openvpn package, docker-compose.yml has NET_ADMIN capability and TUN device for VPN tunnels
 - December 2025: Added MikroTik onboarding script generator - Downloads RouterOS commands (.rsc) for OpenVPN client setup, firewall rules, and health monitoring
 - December 2025: Added VPN server config template download - Reference OpenVPN server configuration for VPS deployment
 - December 2025: Added VPN connection controls - Connect/disconnect/status/test endpoints with environment detection
