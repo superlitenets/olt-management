@@ -18,8 +18,8 @@ FROM node:20-alpine AS runner
 ENV NODE_ENV=production
 WORKDIR /app
 
-# Install runtime dependencies for bcrypt and other native modules
-RUN apk add --no-cache libstdc++ curl
+# Install runtime dependencies for bcrypt, OpenVPN for VPN tunnels, and other native modules
+RUN apk add --no-cache libstdc++ curl openvpn
 
 # Create non-root user for security
 RUN addgroup --system --gid 1001 nodejs && \

@@ -668,6 +668,9 @@ export const mikrotikDevices = pgTable("mikrotik_devices", {
   // VPN configuration - this Mikrotik connects as OpenVPN client
   vpnProfileId: varchar("vpn_profile_id").references(() => vpnProfiles.id),
   vpnTunnelIp: varchar("vpn_tunnel_ip", { length: 45 }), // IP assigned in VPN tunnel
+  // Auto-generated onboarding script for this device
+  onboardingScript: text("onboarding_script"),
+  scriptGeneratedAt: timestamp("script_generated_at"),
   // Status monitoring
   status: mikrotikStatusEnum("status").default("offline"),
   lastSeen: timestamp("last_seen"),
@@ -708,6 +711,8 @@ export const insertMikrotikDeviceSchema = createInsertSchema(mikrotikDevices).om
   cpuUsage: true,
   memoryUsage: true,
   uptime: true,
+  onboardingScript: true,
+  scriptGeneratedAt: true,
 });
 
 // TR-069 Insert Schemas

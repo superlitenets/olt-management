@@ -18,8 +18,10 @@ import {
   insertVpnTunnelSchema,
   insertVpnProfileSchema,
   insertMikrotikDeviceSchema,
+  type MikrotikDevice,
 } from "@shared/schema";
 import { z } from "zod";
+import { generateOnboardingScript } from "./utils/mikrotik-script-generator";
 
 // Helper to resolve tenant ID from authenticated user or create default tenant
 async function resolveTenantId(req: any): Promise<string> {
@@ -2147,8 +2149,20 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
       const tenantId = await resolveTenantId(req);
       const data = insertMikrotikDeviceSchema.parse({ ...req.body, tenantId });
       const device = await storage.createMikrotikDevice(data);
-      broadcast("mikrotikDevice:created", device);
-      res.status(201).json(device);
+      
+      // Auto-generate onboarding script if VPN profile is assigned
+      let vpnProfile = null;
+      if (device.vpnProfileId) {
+        vpnProfile = await storage.getVpnProfile(device.vpnProfileId);
+      }
+      const script = generateOnboardingScript(device, vpnProfile);
+      const updatedDevice = await storage.updateMikrotikDevice(device.id, {
+        onboardingScript: script,
+        scriptGeneratedAt: new Date(),
+      });
+      
+      broadcast("mikrotikDevice:created", updatedDevice || device);
+      res.status(201).json(updatedDevice || device);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
@@ -2161,10 +2175,24 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
   app.patch("/api/mikrotik/devices/:id", isAuthenticated, async (req, res) => {
     try {
       const data = insertMikrotikDeviceSchema.partial().parse(req.body);
-      const device = await storage.updateMikrotikDevice(req.params.id, data);
+      let device = await storage.updateMikrotikDevice(req.params.id, data);
       if (!device) {
         return res.status(404).json({ message: "Mikrotik device not found" });
       }
+      
+      // Regenerate onboarding script if VPN profile or key fields changed
+      if (data.vpnProfileId !== undefined || data.name || data.siteName || data.apiPort || data.vpnTunnelIp) {
+        let vpnProfile = null;
+        if (device.vpnProfileId) {
+          vpnProfile = await storage.getVpnProfile(device.vpnProfileId);
+        }
+        const script = generateOnboardingScript(device, vpnProfile);
+        device = await storage.updateMikrotikDevice(device.id, {
+          onboardingScript: script,
+          scriptGeneratedAt: new Date(),
+        }) || device;
+      }
+      
       broadcast("mikrotikDevice:updated", device);
       res.json(device);
     } catch (error) {
@@ -2187,6 +2215,35 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
     }
   });
 
+  // Regenerate MikroTik onboarding script on demand
+  app.post("/api/mikrotik/devices/:id/regenerate-script", isAuthenticated, async (req, res) => {
+    try {
+      const device = await storage.getMikrotikDevice(req.params.id);
+      if (!device) {
+        return res.status(404).json({ message: "Mikrotik device not found" });
+      }
+
+      let vpnProfile = null;
+      if (device.vpnProfileId) {
+        vpnProfile = await storage.getVpnProfile(device.vpnProfileId);
+      }
+      const script = generateOnboardingScript(device, vpnProfile);
+      const updatedDevice = await storage.updateMikrotikDevice(device.id, {
+        onboardingScript: script,
+        scriptGeneratedAt: new Date(),
+      });
+
+      broadcast("mikrotikDevice:updated", updatedDevice || device);
+      res.json({ 
+        message: "Script regenerated successfully", 
+        scriptGeneratedAt: updatedDevice?.scriptGeneratedAt || new Date() 
+      });
+    } catch (error) {
+      console.error("Error regenerating onboarding script:", error);
+      res.status(500).json({ message: "Failed to regenerate onboarding script" });
+    }
+  });
+
   // Generate MikroTik onboarding script - creates RouterOS commands to configure OpenVPN client
   app.get("/api/mikrotik/devices/:id/onboarding-script", isAuthenticated, async (req, res) => {
     try {
@@ -2195,116 +2252,23 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
         return res.status(404).json({ message: "Mikrotik device not found" });
       }
 
-      // Get linked VPN profile if exists
-      let vpnConfig = "";
-      let vpnPort = "1194";
-      if (device.vpnProfileId) {
-        const vpnProfile = await storage.getVpnProfile(device.vpnProfileId);
-        if (vpnProfile) {
-          // Parse OpenVPN config to extract connection details
-          const ovpnConfig = vpnProfile.ovpnConfig;
-          const remoteMatch = ovpnConfig.match(/remote\s+(\S+)\s+(\d+)/);
-          const protoMatch = ovpnConfig.match(/proto\s+(tcp|udp)/i);
-          
-          const vpnServer = remoteMatch ? remoteMatch[1] : "<YOUR_VPN_SERVER>";
-          vpnPort = remoteMatch ? remoteMatch[2] : "1194";
-          const vpnProto = protoMatch ? protoMatch[1].toLowerCase() : "udp";
-          
-          // Use placeholders for credentials - NEVER expose actual passwords
-          vpnConfig = `
-# ================================
-# OpenVPN Client Configuration
-# ================================
-# IMPORTANT: Replace <VPN_USERNAME> and <VPN_PASSWORD> with actual credentials!
-
-# Create OpenVPN client interface
-/interface ovpn-client add name=ovpn-olt-management connect-to=${vpnServer} port=${vpnPort} mode=ip protocol=${vpnProto} user=<VPN_USERNAME> password=<VPN_PASSWORD> certificate=none auth=sha1 cipher=aes256 add-default-route=no profile=default-encryption comment="OLT Management VPN"
-
-# Wait for interface to come up
-:delay 5s
-
-# Add route to management network via VPN tunnel
-/ip route add dst-address=10.0.0.0/8 gateway=ovpn-olt-management comment="OLT Management Network via VPN"
-`;
+      // Use stored script or regenerate if not available
+      let script = device.onboardingScript;
+      if (!script) {
+        let vpnProfile = null;
+        if (device.vpnProfileId) {
+          vpnProfile = await storage.getVpnProfile(device.vpnProfileId);
         }
+        script = generateOnboardingScript(device, vpnProfile);
+        
+        // Store the generated script for future use
+        await storage.updateMikrotikDevice(device.id, {
+          onboardingScript: script,
+          scriptGeneratedAt: new Date(),
+        });
       }
 
-      // Sanitize device name for RouterOS (remove special characters)
       const sanitizedName = device.name.replace(/[^a-zA-Z0-9_-]/g, "_");
-
-      // Generate the complete onboarding script
-      const script = `# ================================
-# MikroTik Onboarding Script
-# Generated by OLT Management System
-# Device: ${sanitizedName}
-# Site: ${device.siteName || "N/A"}
-# Generated: ${new Date().toISOString()}
-# ================================
-
-# IMPORTANT: Review and adjust settings before running!
-# This script configures your MikroTik router as an OpenVPN client
-# to connect to the central OLT management VPN server.
-# 
-# SECURITY NOTE: You MUST replace <VPN_USERNAME> and <VPN_PASSWORD>
-# with your actual VPN credentials before running this script.
-
-# ================================
-# System Identity
-# ================================
-/system identity set name=${sanitizedName}
-
-# ================================
-# Basic Security Hardening
-# ================================
-
-# Disable unused services
-/ip service disable telnet,ftp,www,api-ssl
-
-# Enable API for OLT Management System access
-/ip service set api address=0.0.0.0/0 port=${device.apiPort || 8728}
-
-# Configure SSH (recommended for manual access)
-/ip service set ssh port=22 address=0.0.0.0/0
-${vpnConfig}
-
-# ================================
-# Firewall Rules for VPN
-# ================================
-
-# Allow established connections
-/ip firewall filter add chain=input connection-state=established,related action=accept comment="Accept established connections"
-
-# Allow OpenVPN traffic on configured port
-/ip firewall filter add chain=input protocol=udp dst-port=${vpnPort} action=accept comment="Allow OpenVPN UDP"
-/ip firewall filter add chain=input protocol=tcp dst-port=${vpnPort} action=accept comment="Allow OpenVPN TCP"
-
-# Allow API access from VPN network
-/ip firewall filter add chain=input src-address=10.0.0.0/8 protocol=tcp dst-port=${device.apiPort || 8728} action=accept comment="Allow API from VPN"
-
-# ================================
-# Logging
-# ================================
-/system logging add topics=ovpn action=memory comment="Log OpenVPN events"
-
-# ================================
-# Scheduler for VPN Health Check
-# ================================
-/system scheduler add name=vpn-health-check interval=5m on-event="/interface ovpn-client monitor ovpn-olt-management once" comment="Monitor VPN connection status"
-
-# ================================
-# Script Complete
-# ================================
-:put "MikroTik onboarding script completed successfully!"
-:put "Device: ${sanitizedName}"
-:put "VPN Tunnel IP: ${device.vpnTunnelIp || "Assigned by VPN server"}"
-:put ""
-:put "Next steps:"
-:put "1. Replace <VPN_USERNAME> and <VPN_PASSWORD> with actual credentials"
-:put "2. Verify OpenVPN connection: /interface ovpn-client print"
-:put "3. Check routes: /ip route print"
-:put "4. Test connectivity to OLT management server"
-`;
-
       res.setHeader("Content-Type", "text/plain");
       res.setHeader("Content-Disposition", `attachment; filename="${sanitizedName}_onboarding.rsc"`);
       res.send(script);
