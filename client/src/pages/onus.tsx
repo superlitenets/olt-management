@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -814,7 +815,9 @@ export default function OnusPage() {
                       </TableCell>
                       <TableCell>
                         <div>
-                          <span className="font-mono text-sm">{onu.serialNumber}</span>
+                          <Link href={`/onus/${onu.id}`} data-testid={`link-onu-${onu.id}`}>
+                            <span className="font-mono text-sm text-primary hover:underline cursor-pointer">{onu.serialNumber}</span>
+                          </Link>
                           {onu.macAddress && (
                             <p className="text-xs text-muted-foreground font-mono">
                               {onu.macAddress}

@@ -15,6 +15,7 @@ import Dashboard from "@/pages/dashboard";
 import OltsPage from "@/pages/olts";
 import OltDetailPage from "@/pages/olt-detail";
 import OnusPage from "@/pages/onus";
+import OnuDetailPage from "@/pages/onu-detail";
 import ServiceProfilesPage from "@/pages/service-profiles";
 import AlertsPage from "@/pages/alerts";
 import MonitoringPage from "@/pages/monitoring";
@@ -83,6 +84,7 @@ function Router() {
         <Route path="/olts" component={OltsPage} />
         <Route path="/olts/:id" component={OltDetailPage} />
         <Route path="/onus" component={OnusPage} />
+        <Route path="/onus/:id" component={OnuDetailPage} />
         <Route path="/profiles" component={ServiceProfilesPage} />
         <Route path="/alerts" component={AlertsPage} />
         <Route path="/monitoring" component={MonitoringPage} />
