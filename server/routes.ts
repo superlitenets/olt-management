@@ -2034,7 +2034,16 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
       const tenantId = await resolveTenantId(req);
       const { tenantId: _, ...bodyWithoutTenant } = req.body;
       const data = insertVpnProfileSchema.parse({ ...bodyWithoutTenant, tenantId });
-      const profile = await storage.createVpnProfile(data);
+      let profile = await storage.createVpnProfile(data);
+      
+      // Auto-generate MikroTik script for this VPN tunnel
+      const { generateVpnTunnelScript } = await import("./utils/mikrotik-script-generator");
+      const mikrotikScript = generateVpnTunnelScript(profile);
+      profile = await storage.updateVpnProfile(profile.id, {
+        mikrotikScript,
+        scriptGeneratedAt: new Date(),
+      }) || profile;
+      
       broadcast("vpnProfile:created", profile);
       res.status(201).json(profile);
     } catch (error) {
@@ -2049,10 +2058,21 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
   app.patch("/api/vpn/profiles/:id", isAuthenticated, async (req, res) => {
     try {
       const data = insertVpnProfileSchema.partial().parse(req.body);
-      const profile = await storage.updateVpnProfile(req.params.id, data);
+      let profile = await storage.updateVpnProfile(req.params.id, data);
       if (!profile) {
         return res.status(404).json({ message: "VPN profile not found" });
       }
+      
+      // Regenerate MikroTik script if ovpnConfig or name changed
+      if (data.ovpnConfig !== undefined || data.name !== undefined) {
+        const { generateVpnTunnelScript } = await import("./utils/mikrotik-script-generator");
+        const mikrotikScript = generateVpnTunnelScript(profile);
+        profile = await storage.updateVpnProfile(profile.id, {
+          mikrotikScript,
+          scriptGeneratedAt: new Date(),
+        }) || profile;
+      }
+      
       broadcast("vpnProfile:updated", profile);
       res.json(profile);
     } catch (error) {
@@ -2061,6 +2081,60 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
       }
       console.error("Error updating VPN profile:", error);
       res.status(500).json({ message: "Failed to update VPN profile" });
+    }
+  });
+  
+  // Download MikroTik script for VPN tunnel
+  app.get("/api/vpn/profiles/:id/mikrotik-script", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getVpnProfile(req.params.id);
+      if (!profile) {
+        return res.status(404).json({ message: "VPN profile not found" });
+      }
+      
+      // Use stored script or regenerate if not available
+      let script = profile.mikrotikScript;
+      if (!script) {
+        const { generateVpnTunnelScript } = await import("./utils/mikrotik-script-generator");
+        script = generateVpnTunnelScript(profile);
+        
+        // Store the generated script for future use
+        await storage.updateVpnProfile(profile.id, {
+          mikrotikScript: script,
+          scriptGeneratedAt: new Date(),
+        });
+      }
+      
+      const sanitizedName = profile.name.replace(/[^a-zA-Z0-9_-]/g, "_");
+      res.setHeader("Content-Type", "text/plain");
+      res.setHeader("Content-Disposition", `attachment; filename="${sanitizedName}_mikrotik.rsc"`);
+      res.send(script);
+    } catch (error) {
+      console.error("Error generating MikroTik script:", error);
+      res.status(500).json({ message: "Failed to generate MikroTik script" });
+    }
+  });
+  
+  // Regenerate MikroTik script for VPN tunnel
+  app.post("/api/vpn/profiles/:id/regenerate-script", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getVpnProfile(req.params.id);
+      if (!profile) {
+        return res.status(404).json({ message: "VPN profile not found" });
+      }
+      
+      const { generateVpnTunnelScript } = await import("./utils/mikrotik-script-generator");
+      const mikrotikScript = generateVpnTunnelScript(profile);
+      const updatedProfile = await storage.updateVpnProfile(profile.id, {
+        mikrotikScript,
+        scriptGeneratedAt: new Date(),
+      });
+      
+      broadcast("vpnProfile:updated", updatedProfile);
+      res.json(updatedProfile);
+    } catch (error) {
+      console.error("Error regenerating MikroTik script:", error);
+      res.status(500).json({ message: "Failed to regenerate MikroTik script" });
     }
   });
 

@@ -13,7 +13,6 @@ import {
   ChevronDown,
   Wifi,
   Shield,
-  Router,
 } from "lucide-react";
 import {
   Sidebar,
@@ -68,14 +67,9 @@ const mainNavItems = [
     icon: Wifi,
   },
   {
-    title: "VPN",
+    title: "VPN Tunnels",
     url: "/vpn",
     icon: Shield,
-  },
-  {
-    title: "Mikrotik",
-    url: "/mikrotik",
-    icon: Router,
   },
   {
     title: "Monitoring",

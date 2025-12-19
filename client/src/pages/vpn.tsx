@@ -118,8 +118,8 @@ export default function VpnPage() {
       setProfileDialogOpen(false);
       resetProfileForm();
       toast({
-        title: "Profile Created",
-        description: "OpenVPN profile has been created successfully",
+        title: "Tunnel Created",
+        description: "VPN tunnel created with MikroTik script auto-generated",
       });
     },
     onError: (error: Error) => {
@@ -152,8 +152,8 @@ export default function VpnPage() {
       setEditingProfile(null);
       resetProfileForm();
       toast({
-        title: "Profile Updated",
-        description: "OpenVPN profile has been updated successfully",
+        title: "Tunnel Updated",
+        description: "VPN tunnel updated with MikroTik script regenerated",
       });
     },
     onError: (error: Error) => {
@@ -185,8 +185,8 @@ export default function VpnPage() {
       setDeleteProfileDialogOpen(false);
       setProfileToDelete(null);
       toast({
-        title: "Profile Deleted",
-        description: "OpenVPN profile has been deleted",
+        title: "Tunnel Deleted",
+        description: "VPN tunnel has been deleted",
       });
     },
     onError: (error: Error) => {
@@ -393,9 +393,9 @@ export default function VpnPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight" data-testid="text-page-title">VPN Profiles</h1>
+          <h1 className="text-2xl font-semibold tracking-tight" data-testid="text-page-title">VPN Tunnels</h1>
           <p className="text-sm text-muted-foreground">
-            Manage OpenVPN profiles for secure OLT connectivity
+            Manage OpenVPN tunnels for secure OLT connectivity
           </p>
         </div>
         <Button
@@ -404,10 +404,10 @@ export default function VpnPage() {
             resetProfileForm();
             setProfileDialogOpen(true);
           }}
-          data-testid="button-add-profile"
+          data-testid="button-add-tunnel"
         >
           <Plus className="h-4 w-4 mr-2" />
-          Add Profile
+          Add Tunnel
         </Button>
       </div>
 
@@ -431,11 +431,11 @@ export default function VpnPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Profiles</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Tunnels</CardTitle>
             <Shield className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-total-profiles">{profiles?.length || 0}</div>
+            <div className="text-2xl font-bold" data-testid="text-total-tunnels">{profiles?.length || 0}</div>
             <p className="text-xs text-muted-foreground">OpenVPN configurations</p>
           </CardContent>
         </Card>
@@ -476,15 +476,15 @@ export default function VpnPage() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between gap-4 flex-wrap">
-            <CardTitle>VPN Profiles</CardTitle>
+            <CardTitle>VPN Tunnels</CardTitle>
             <div className="relative w-full sm:w-64">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search profiles..."
+                placeholder="Search tunnels..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-8"
-                data-testid="input-search-profiles"
+                data-testid="input-search-tunnels"
               />
             </div>
           </div>
@@ -495,10 +495,10 @@ export default function VpnPage() {
           ) : !filteredProfiles?.length ? (
             <EmptyState
               icon={<Shield className="h-8 w-8" />}
-              title="No VPN Profiles"
-              description="Create an OpenVPN profile to enable secure OLT connections"
+              title="No VPN Tunnels"
+              description="Create a VPN tunnel to enable secure OLT connections. A MikroTik script will be auto-generated."
               action={{
-                label: "Add Profile",
+                label: "Add Tunnel",
                 onClick: () => {
                   setEditingProfile(null);
                   resetProfileForm();
@@ -637,6 +637,13 @@ export default function VpnPage() {
                             Test Configuration
                           </DropdownMenuItem>
                           <DropdownMenuItem
+                            onClick={() => window.open(`/api/vpn/profiles/${profile.id}/mikrotik-script`, "_blank")}
+                            data-testid={`button-mikrotik-script-${profile.id}`}
+                          >
+                            <Download className="h-4 w-4 mr-2" />
+                            Download MikroTik Script
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
                             onClick={() => window.open(`/api/vpn/profiles/${profile.id}/server-config`, "_blank")}
                             data-testid={`button-server-config-${profile.id}`}
                           >
@@ -684,11 +691,11 @@ export default function VpnPage() {
       >
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingProfile ? "Edit VPN Profile" : "Add VPN Profile"}</DialogTitle>
+            <DialogTitle>{editingProfile ? "Edit VPN Tunnel" : "Add VPN Tunnel"}</DialogTitle>
             <DialogDescription>
               {editingProfile
-                ? "Update the OpenVPN profile configuration"
-                : "Create a new OpenVPN profile for OLT connectivity"}
+                ? "Update the VPN tunnel configuration"
+                : "Create a new VPN tunnel. A MikroTik script will be auto-generated."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
