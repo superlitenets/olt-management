@@ -367,24 +367,27 @@ export default function OnuDetailPage() {
     const parameterValues: { name: string; value: string }[] = [];
 
     parameterValues.push(
-      { name: "Device.IP.Interface.1.Enable", value: wanConfig.enabled ? "1" : "0" },
       { name: "Device.Ethernet.Interface.1.MaxMTUSize", value: wanConfig.mtu }
     );
 
     if (wanConfig.wanMode === "route") {
       parameterValues.push(
-        { name: "Device.NAT.InterfaceSetting.1.Enable", value: wanConfig.natEnabled ? "1" : "0" }
+        { name: "Device.IP.Interface.1.Enable", value: wanConfig.enabled ? "1" : "0" },
+        { name: "Device.NAT.InterfaceSetting.1.Enable", value: wanConfig.natEnabled ? "1" : "0" },
+        { name: "Device.Bridging.Bridge.1.Enable", value: "0" }
       );
 
       if (wanConfig.connectionType === "DHCP") {
         parameterValues.push(
           { name: "Device.IP.Interface.1.IPv4Address.1.AddressingType", value: "DHCP" },
-          { name: "Device.DHCPv4.Client.1.Enable", value: "1" }
+          { name: "Device.DHCPv4.Client.1.Enable", value: "1" },
+          { name: "Device.PPP.Interface.1.Enable", value: "0" }
         );
       } else if (wanConfig.connectionType === "Static") {
         parameterValues.push(
           { name: "Device.IP.Interface.1.IPv4Address.1.AddressingType", value: "Static" },
           { name: "Device.DHCPv4.Client.1.Enable", value: "0" },
+          { name: "Device.PPP.Interface.1.Enable", value: "0" },
           { name: "Device.IP.Interface.1.IPv4Address.1.IPAddress", value: wanConfig.ipAddress },
           { name: "Device.IP.Interface.1.IPv4Address.1.SubnetMask", value: wanConfig.subnetMask },
           { name: "Device.Routing.Router.1.IPv4Forwarding.1.GatewayIPAddress", value: wanConfig.gateway }
@@ -397,6 +400,7 @@ export default function OnuDetailPage() {
         }
       } else if (wanConfig.connectionType === "PPPoE") {
         parameterValues.push(
+          { name: "Device.DHCPv4.Client.1.Enable", value: "0" },
           { name: "Device.PPP.Interface.1.Enable", value: "1" },
           { name: "Device.PPP.Interface.1.Username", value: wanConfig.pppoeUsername },
           { name: "Device.PPP.Interface.1.Password", value: wanConfig.pppoePassword },
@@ -408,9 +412,11 @@ export default function OnuDetailPage() {
       }
     } else {
       parameterValues.push(
-        { name: "Device.IP.Interface.1.IPv4Address.1.AddressingType", value: "Static" },
-        { name: "Device.Bridging.Bridge.1.Enable", value: "1" },
-        { name: "Device.NAT.InterfaceSetting.1.Enable", value: "0" }
+        { name: "Device.IP.Interface.1.Enable", value: "0" },
+        { name: "Device.DHCPv4.Client.1.Enable", value: "0" },
+        { name: "Device.PPP.Interface.1.Enable", value: "0" },
+        { name: "Device.NAT.InterfaceSetting.1.Enable", value: "0" },
+        { name: "Device.Bridging.Bridge.1.Enable", value: "1" }
       );
     }
 
@@ -430,19 +436,25 @@ export default function OnuDetailPage() {
       { name: "Device.Ethernet.Interface.1.Enable", value: layer2Config.enabled ? "1" : "0" }
     );
 
+    const serviceTypePriority: Record<string, string> = {
+      internet: "0",
+      voip: "5",
+      iptv: "4",
+      management: "7",
+    };
+
     if (layer2Config.vlanId) {
       parameterValues.push(
         { name: "Device.Ethernet.VLANTermination.1.VLANID", value: layer2Config.vlanId },
-        { name: "Device.Ethernet.VLANTermination.1.Enable", value: "1" }
+        { name: "Device.Ethernet.VLANTermination.1.Enable", value: "1" },
+        { name: "Device.Ethernet.VLANTermination.1.X_TagMode", value: layer2Config.vlanTagMode === "tagged" ? "Tagged" : "Untagged" },
+        { name: "Device.Ethernet.VLANTermination.1.X_Priority", value: layer2Config.vlanPriority || serviceTypePriority[layer2Config.serviceType] },
+        { name: "Device.Ethernet.VLANTermination.1.X_ServiceType", value: layer2Config.serviceType.toUpperCase() }
       );
-      if (layer2Config.vlanTagMode === "tagged") {
-        parameterValues.push({ name: "Device.Ethernet.VLANTermination.1.X_TagMode", value: "Tagged" });
-      } else {
-        parameterValues.push({ name: "Device.Ethernet.VLANTermination.1.X_TagMode", value: "Untagged" });
-      }
-      if (layer2Config.vlanPriority) {
-        parameterValues.push({ name: "Device.Ethernet.VLANTermination.1.X_Priority", value: layer2Config.vlanPriority });
-      }
+    } else {
+      parameterValues.push(
+        { name: "Device.Ethernet.VLANTermination.1.Enable", value: "0" }
+      );
     }
 
     if (layer2Config.bridgeMode === "enabled" && layer2Config.bridgeVlanId) {
@@ -450,6 +462,10 @@ export default function OnuDetailPage() {
         { name: "Device.Bridging.Bridge.1.Enable", value: "1" },
         { name: "Device.Bridging.Bridge.1.VLAN.1.VLANID", value: layer2Config.bridgeVlanId },
         { name: "Device.Bridging.Bridge.1.VLAN.1.Enable", value: "1" }
+      );
+    } else if (layer2Config.bridgeMode === "disabled") {
+      parameterValues.push(
+        { name: "Device.Bridging.Bridge.1.VLAN.1.Enable", value: "0" }
       );
     }
 
