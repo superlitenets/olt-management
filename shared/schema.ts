@@ -549,8 +549,9 @@ export const vpnProfiles = pgTable("vpn_profiles", {
   lastConnected: timestamp("last_connected"),
   lastError: text("last_error"),
   isActive: boolean("is_active").default(true),
-  // Auto-generated MikroTik onboarding script
-  mikrotikScript: text("mikrotik_script"),
+  // Auto-generated scripts
+  mikrotikScript: text("mikrotik_script"), // MikroTik client configuration
+  vpsFirewallScript: text("vps_firewall_script"), // VPS server firewall rules (iptables)
   scriptGeneratedAt: timestamp("script_generated_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

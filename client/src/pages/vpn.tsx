@@ -659,14 +659,21 @@ export default function VpnPage() {
                             data-testid={`button-mikrotik-script-${profile.id}`}
                           >
                             <Download className="h-4 w-4 mr-2" />
-                            Download MikroTik Script
+                            MikroTik Client Script
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => window.open(`/api/vpn/profiles/${profile.id}/vps-firewall-script`, "_blank")}
+                            data-testid={`button-vps-firewall-${profile.id}`}
+                          >
+                            <Shield className="h-4 w-4 mr-2" />
+                            VPS Firewall Script
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => window.open(`/api/vpn/profiles/${profile.id}/server-config`, "_blank")}
                             data-testid={`button-server-config-${profile.id}`}
                           >
                             <Server className="h-4 w-4 mr-2" />
-                            Download Server Config
+                            OpenVPN Server Config
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => openEditProfile(profile)}

@@ -2044,16 +2044,19 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
       // Get base URL for script generation
       const baseUrl = `${req.protocol}://${req.get('host')}`;
       
-      // Auto-generate MikroTik script for this VPN tunnel
+      // Auto-generate scripts for this VPN tunnel
       const { generateVpnTunnelScript } = await import("./utils/mikrotik-script-generator");
+      const { generateVpsFirewallScript } = await import("./utils/vps-firewall-generator");
       
       // First update with download token
       profile = await storage.updateVpnProfile(profile.id, { downloadToken }) || profile;
       
-      // Then generate script with the token
+      // Generate both MikroTik client script and VPS firewall script
       const mikrotikScript = generateVpnTunnelScript(profile, { baseUrl });
+      const vpsFirewallScript = generateVpsFirewallScript(profile);
       profile = await storage.updateVpnProfile(profile.id, {
         mikrotikScript,
+        vpsFirewallScript,
         scriptGeneratedAt: new Date(),
       }) || profile;
       
@@ -2085,9 +2088,12 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
       if (needsRegeneration) {
         const baseUrl = `${req.protocol}://${req.get('host')}`;
         const { generateVpnTunnelScript } = await import("./utils/mikrotik-script-generator");
+        const { generateVpsFirewallScript } = await import("./utils/vps-firewall-generator");
         const mikrotikScript = generateVpnTunnelScript(profile, { baseUrl });
+        const vpsFirewallScript = generateVpsFirewallScript(profile);
         profile = await storage.updateVpnProfile(profile.id, {
           mikrotikScript,
+          vpsFirewallScript,
           scriptGeneratedAt: new Date(),
         }) || profile;
       }
@@ -2528,6 +2534,32 @@ verb 3
     } catch (error) {
       console.error("Error generating server config:", error);
       res.status(500).json({ message: "Failed to generate server config" });
+    }
+  });
+
+  // VPS Firewall Script - iptables rules for routing TR-069 and management traffic
+  app.get("/api/vpn/profiles/:id/vps-firewall-script", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getVpnProfile(req.params.id);
+      if (!profile) {
+        return res.status(404).json({ message: "VPN profile not found" });
+      }
+
+      // Use stored script or regenerate
+      let script = profile.vpsFirewallScript;
+      if (!script) {
+        const { generateVpsFirewallScript } = await import("./utils/vps-firewall-generator");
+        script = generateVpsFirewallScript(profile);
+        await storage.updateVpnProfile(profile.id, { vpsFirewallScript: script });
+      }
+
+      const sanitizedName = profile.name.replace(/[^a-zA-Z0-9_-]/g, "_");
+      res.setHeader("Content-Type", "text/plain");
+      res.setHeader("Content-Disposition", `attachment; filename="${sanitizedName}_vps_firewall.sh"`);
+      res.send(script);
+    } catch (error) {
+      console.error("Error generating VPS firewall script:", error);
+      res.status(500).json({ message: "Failed to generate VPS firewall script" });
     }
   });
 
