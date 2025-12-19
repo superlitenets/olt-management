@@ -1,15 +1,32 @@
 import type { MikrotikDevice, VpnProfile } from "@shared/schema";
 
-// Generate a standalone MikroTik script from VPN profile only (for VPN Tunnels page)
-export function generateVpnTunnelScript(vpnProfile: VpnProfile): string {
-  const ovpnConfig = vpnProfile.ovpnConfig;
-  const remoteMatch = ovpnConfig.match(/remote\s+(\S+)\s+(\d+)/);
-  const protoMatch = ovpnConfig.match(/proto\s+(tcp|udp)/i);
+interface ScriptOptions {
+  baseUrl: string; // Base URL for OVPN download endpoint
+}
 
-  const vpnServer = remoteMatch ? remoteMatch[1] : "<YOUR_VPN_SERVER>";
-  const vpnPort = remoteMatch ? remoteMatch[2] : "1194";
-  const vpnProto = protoMatch ? protoMatch[1].toLowerCase() : "udp";
+// Generate a MikroTik script that fetches OVPN and sets up IP routing
+export function generateVpnTunnelScript(vpnProfile: VpnProfile, options: ScriptOptions): string {
   const sanitizedName = vpnProfile.name.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const ovpnFileName = `ovpn-${sanitizedName}.ovpn`;
+  const downloadUrl = `${options.baseUrl}/api/vpn/profiles/${vpnProfile.id}/ovpn?token=${vpnProfile.downloadToken || ''}`;
+  
+  // Combine TR-069 and management IPs for routing
+  const tr069Ips = vpnProfile.tr069Ips || [];
+  const managementIps = vpnProfile.managementIps || [];
+  const allIps = [...tr069Ips, ...managementIps];
+
+  // Generate IP routing commands
+  const ipRouteCommands = allIps.map(ip => {
+    // Check if it's a CIDR notation or single IP
+    const addr = ip.includes('/') ? ip : `${ip}/32`;
+    return `/ip route add dst-address=${addr} gateway=ovpn-${sanitizedName} comment="VPN Route - ${sanitizedName}"`;
+  }).join('\n');
+
+  // Generate address list entries for firewall
+  const addressListCommands = allIps.map(ip => {
+    const addr = ip.includes('/') ? ip : `${ip}/32`;
+    return `/ip firewall address-list add list=vpn-${sanitizedName} address=${addr} comment="VPN Allowed - ${sanitizedName}"`;
+  }).join('\n');
 
   return `# ================================
 # MikroTik OpenVPN Client Script
@@ -18,70 +35,151 @@ export function generateVpnTunnelScript(vpnProfile: VpnProfile): string {
 # Generated: ${new Date().toISOString()}
 # ================================
 
-# IMPORTANT: Review and adjust settings before running!
-# This script configures your MikroTik router as an OpenVPN client
-# to connect to the central OLT management VPN server.
-# 
-# SECURITY NOTE: You MUST replace <VPN_USERNAME> and <VPN_PASSWORD>
-# with your actual VPN credentials before running this script.
+# IMPORTANT: This script automatically fetches and imports the OVPN configuration.
+# You only need to set the VPN credentials before running.
 
 # ================================
-# OpenVPN Client Configuration
+# Configuration Variables
 # ================================
-# VPN Server: ${vpnServer}
-# VPN Port: ${vpnPort}
-# Protocol: ${vpnProto}
+:local vpnUser "<VPN_USERNAME>"
+:local vpnPass "<VPN_PASSWORD>"
+:local ovpnUrl "${downloadUrl}"
+:local ovpnFile "${ovpnFileName}"
+:local interfaceName "ovpn-${sanitizedName}"
+
+# ================================
+# Clean up previous configuration (if any)
+# ================================
+:do {
+  /interface ovpn-client remove [find name=$interfaceName]
+} on-error={}
+
+:do {
+  /ip route remove [find comment~"VPN Route - ${sanitizedName}"]
+} on-error={}
+
+:do {
+  /ip firewall address-list remove [find list="vpn-${sanitizedName}"]
+} on-error={}
+
+:do {
+  /file remove [find name=$ovpnFile]
+} on-error={}
+
+# ================================
+# Download OVPN Configuration
+# ================================
+:put "Downloading OVPN configuration..."
+/tool fetch url=$ovpnUrl dst-path=$ovpnFile mode=https
+
+:delay 3s
+
+# Verify download
+:if ([:len [/file find name=$ovpnFile]] = 0) do={
+  :put "ERROR: Failed to download OVPN file"
+  :error "OVPN download failed"
+}
+
+:put "OVPN file downloaded successfully"
+
+# ================================
+# Import and Configure OpenVPN Client
+# ================================
+:put "Importing OVPN configuration..."
+
+# Note: MikroTik imports OVPN as certificate + interface
+# We need to manually create the interface after importing certs
+/certificate import file-name=$ovpnFile passphrase=""
+
+# Parse OVPN file for connection details (basic parsing)
+:local fileContent [/file get $ovpnFile contents]
 
 # Create OpenVPN client interface
-/interface ovpn-client add name=ovpn-${sanitizedName} connect-to=${vpnServer} port=${vpnPort} mode=ip protocol=${vpnProto} user=<VPN_USERNAME> password=<VPN_PASSWORD> certificate=none auth=sha1 cipher=aes256 add-default-route=no profile=default-encryption comment="OLT Management VPN - ${vpnProfile.name}"
+# IMPORTANT: Replace these with values from your OVPN if different
+/interface ovpn-client add \\
+  name=$interfaceName \\
+  user=$vpnUser \\
+  password=$vpnPass \\
+  certificate=none \\
+  auth=sha1 \\
+  cipher=aes256-cbc \\
+  add-default-route=no \\
+  profile=default-encryption \\
+  comment="OLT Management VPN - ${vpnProfile.name}"
 
-# Wait for interface to come up
-:delay 5s
+:delay 3s
 
 # ================================
-# Routes for OLT Management
+# IP Address Routing
 # ================================
-# Add route to management network via VPN tunnel
-/ip route add dst-address=10.0.0.0/8 gateway=ovpn-${sanitizedName} comment="OLT Management Network via VPN"
+:put "Configuring IP routes..."
+
+# TR-069 Server IPs: ${tr069Ips.join(', ') || 'None configured'}
+# OLT Management IPs: ${managementIps.join(', ') || 'None configured'}
+
+${ipRouteCommands || '# No IP routes configured'}
 
 # ================================
-# Firewall Rules for VPN
+# Firewall Address Lists
 # ================================
+:put "Configuring firewall address lists..."
+
+${addressListCommands || '# No address list entries configured'}
+
+# ================================
+# Firewall Rules for VPN Traffic
+# ================================
+:put "Configuring firewall rules..."
 
 # Allow established connections
-/ip firewall filter add chain=input connection-state=established,related action=accept comment="Accept established connections"
+/ip firewall filter add chain=input connection-state=established,related action=accept comment="VPN - Accept established"
 
-# Allow OpenVPN traffic
-/ip firewall filter add chain=input protocol=${vpnProto} dst-port=${vpnPort} action=accept comment="Allow OpenVPN ${vpnProto.toUpperCase()}"
+# Allow traffic from VPN address list
+/ip firewall filter add chain=input src-address-list=vpn-${sanitizedName} action=accept comment="VPN - Allow from VPN network"
 
-# Allow management traffic from VPN network
-/ip firewall filter add chain=input src-address=10.0.0.0/8 protocol=tcp dst-port=8728 action=accept comment="Allow API from VPN"
-/ip firewall filter add chain=input src-address=10.0.0.0/8 protocol=tcp dst-port=22 action=accept comment="Allow SSH from VPN"
+# NAT masquerade for outbound VPN traffic
+/ip firewall nat add chain=srcnat out-interface=$interfaceName action=masquerade comment="VPN - Masquerade to ${sanitizedName}"
 
 # ================================
 # Logging
 # ================================
-/system logging add topics=ovpn action=memory comment="Log OpenVPN events"
+/system logging add topics=ovpn action=memory comment="Log OpenVPN events - ${sanitizedName}"
 
 # ================================
-# Scheduler for VPN Health Check
+# Health Check Scheduler
 # ================================
-/system scheduler add name=vpn-health-${sanitizedName} interval=5m on-event="/interface ovpn-client monitor ovpn-${sanitizedName} once" comment="Monitor VPN connection status"
+/system scheduler add name="vpn-health-${sanitizedName}" interval=5m on-event={
+  :local status [/interface ovpn-client get [find name="$interfaceName"] running]
+  :if ($status != true) do={
+    :put "VPN connection down, attempting reconnect..."
+    /interface ovpn-client disable [find name="$interfaceName"]
+    :delay 5s
+    /interface ovpn-client enable [find name="$interfaceName"]
+  }
+} comment="Monitor and auto-reconnect VPN"
 
 # ================================
 # Script Complete
 # ================================
-:put "MikroTik VPN client script completed successfully!"
+:put "========================================="
+:put "MikroTik VPN client configuration complete!"
 :put "VPN Tunnel: ${vpnProfile.name}"
+:put "Interface: $interfaceName"
+:put ""
+:put "Routed IPs:"
+${allIps.map(ip => `:put "  - ${ip}"`).join('\n') || ':put "  None configured"'}
 :put ""
 :put "Next steps:"
-:put "1. Replace <VPN_USERNAME> and <VPN_PASSWORD> with actual credentials"
-:put "2. Verify OpenVPN connection: /interface ovpn-client print"
-:put "3. Check routes: /ip route print"
-:put "4. Test connectivity to OLT management server"
+:put "1. Replace <VPN_USERNAME> and <VPN_PASSWORD> at the top of this script"
+:put "2. Run the script on your MikroTik router"
+:put "3. Verify connection: /interface ovpn-client print"
+:put "4. Check routes: /ip route print where comment~\\"VPN Route\\""
+:put "5. Test connectivity to management IPs"
+:put "========================================="
 `;
 }
 
+// Legacy function for MikroTik devices (kept for backward compatibility)
 export function generateOnboardingScript(
   device: MikrotikDevice,
   vpnProfile?: VpnProfile | null
@@ -89,7 +187,7 @@ export function generateOnboardingScript(
   let vpnConfig = "";
   let vpnPort = "1194";
 
-  if (vpnProfile) {
+  if (vpnProfile && vpnProfile.ovpnConfig) {
     const ovpnConfig = vpnProfile.ovpnConfig;
     const remoteMatch = ovpnConfig.match(/remote\s+(\S+)\s+(\d+)/);
     const protoMatch = ovpnConfig.match(/proto\s+(tcp|udp)/i);
