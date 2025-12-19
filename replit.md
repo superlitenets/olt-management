@@ -236,7 +236,40 @@ VoIP/SIP Configuration:
 - `Device.Services.VoiceService.1.VoiceProfile.1.Line.{n}.SIP.AuthUserName` - SIP username
 - `Device.Services.VoiceService.1.VoiceProfile.1.Line.{n}.SIP.AuthPassword` - SIP password
 
+WAN Configuration (Route Mode):
+- `Device.IP.Interface.1.Enable` - Enable WAN interface ("1" or "0")
+- `Device.IP.Interface.1.IPv4Address.1.AddressingType` - Address type ("DHCP", "Static")
+- `Device.IP.Interface.1.IPv4Address.1.IPAddress` - Static IP address
+- `Device.IP.Interface.1.IPv4Address.1.SubnetMask` - Subnet mask
+- `Device.Routing.Router.1.IPv4Forwarding.1.GatewayIPAddress` - Default gateway
+- `Device.DNS.Client.Server.1.DNSServer` - Primary DNS server
+- `Device.DNS.Client.Server.2.DNSServer` - Secondary DNS server
+- `Device.DHCPv4.Client.1.Enable` - Enable DHCP client ("1" or "0")
+- `Device.NAT.InterfaceSetting.1.Enable` - Enable NAT ("1" or "0")
+- `Device.Ethernet.Interface.1.MaxMTUSize` - MTU size
+
+WAN Configuration (PPPoE):
+- `Device.PPP.Interface.1.Enable` - Enable PPPoE ("1" or "0")
+- `Device.PPP.Interface.1.Username` - PPPoE username
+- `Device.PPP.Interface.1.Password` - PPPoE password
+- `Device.PPP.Interface.1.ServiceName` - PPPoE service name (optional)
+- `Device.PPP.Interface.1.ConnectionTrigger` - Connection mode ("AlwaysOn", "OnDemand")
+
+WAN Configuration (Bridge Mode):
+- `Device.Bridging.Bridge.1.Enable` - Enable bridge mode ("1" or "0")
+
+Layer 2/VLAN Configuration:
+- `Device.Ethernet.VLANTermination.1.VLANID` - VLAN ID
+- `Device.Ethernet.VLANTermination.1.Enable` - Enable VLAN termination ("1" or "0")
+- `Device.Ethernet.VLANTermination.1.X_TagMode` - Tag mode ("Tagged", "Untagged")
+- `Device.Ethernet.VLANTermination.1.X_Priority` - VLAN priority (0-7)
+- `Device.Bridging.Bridge.1.VLAN.1.VLANID` - Bridge VLAN ID
+- `Device.Bridging.Bridge.1.VLAN.1.Enable` - Enable bridge VLAN ("1" or "0")
+- `Device.Ethernet.Interface.1.Enable` - Enable Ethernet interface ("1" or "0")
+
 ## Recent Changes
+- December 2025: Added comprehensive WAN configuration dialog with Route mode (DHCP, PPPoE, Static) and Bridge mode support
+- December 2025: Added Layer 2/VLAN configuration with service types (Internet, VoIP, IPTV, Management), tag modes, and bridge settings
 - December 2025: Added OpenVPN integration - VPN profiles management for secure OLT connections with environment detection (Replit vs Docker/local deployment)
 - December 2025: Added TR-069 parameters viewer/editor with type selector (String, Integer, Boolean) for inline editing
 - December 2025: Added TR-069 WiFi configuration dialog with SSID, password, security mode, channel settings

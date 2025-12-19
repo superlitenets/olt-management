@@ -97,18 +97,33 @@ export default function OnuDetailPage() {
     enabled: true,
   });
 
-  const [vlanConfig, setVlanConfig] = useState({
-    vlanId: "",
-    ipMode: "DHCP" as "DHCP" | "Static" | "PPPoE",
+  const [wanConfig, setWanConfig] = useState({
+    wanMode: "route" as "route" | "bridge",
+    connectionType: "DHCP" as "DHCP" | "Static" | "PPPoE",
     ipAddress: "",
     subnetMask: "255.255.255.0",
     gateway: "",
-    dnsServer: "",
+    primaryDns: "",
+    secondaryDns: "",
     pppoeUsername: "",
     pppoePassword: "",
+    pppoeServiceName: "",
     mtu: "1500",
+    natEnabled: true,
     enabled: true,
   });
+
+  const [layer2Config, setLayer2Config] = useState({
+    vlanId: "",
+    vlanPriority: "0",
+    vlanTagMode: "tagged" as "tagged" | "untagged",
+    bridgeMode: "disabled" as "disabled" | "enabled",
+    bridgeVlanId: "",
+    serviceType: "internet" as "internet" | "voip" | "iptv" | "management",
+    enabled: true,
+  });
+
+  const [wanDialogTab, setWanDialogTab] = useState<"wan" | "layer2">("wan");
 
   const [parametersFilter, setParametersFilter] = useState("");
   const [editingParameter, setEditingParameter] = useState<{ path: string; value: string; type?: string } | null>(null);
@@ -347,27 +362,94 @@ export default function OnuDetailPage() {
     setVoipDialogOpen(false);
   };
 
-  const handleVlanSubmit = () => {
-    if (!id || !vlanConfig.vlanId) return;
-    const parameterValues: { name: string; value: string }[] = [
-      { name: "Device.Ethernet.Interface.1.X_VLAN.VLANID", value: vlanConfig.vlanId },
-      { name: "Device.IP.Interface.1.Enable", value: vlanConfig.enabled ? "1" : "0" },
-      { name: "Device.Ethernet.Interface.1.MaxMTUSize", value: vlanConfig.mtu },
-    ];
+  const handleWanSubmit = () => {
+    if (!id) return;
+    const parameterValues: { name: string; value: string }[] = [];
 
-    if (vlanConfig.ipMode === "Static") {
+    parameterValues.push(
+      { name: "Device.IP.Interface.1.Enable", value: wanConfig.enabled ? "1" : "0" },
+      { name: "Device.Ethernet.Interface.1.MaxMTUSize", value: wanConfig.mtu }
+    );
+
+    if (wanConfig.wanMode === "route") {
+      parameterValues.push(
+        { name: "Device.NAT.InterfaceSetting.1.Enable", value: wanConfig.natEnabled ? "1" : "0" }
+      );
+
+      if (wanConfig.connectionType === "DHCP") {
+        parameterValues.push(
+          { name: "Device.IP.Interface.1.IPv4Address.1.AddressingType", value: "DHCP" },
+          { name: "Device.DHCPv4.Client.1.Enable", value: "1" }
+        );
+      } else if (wanConfig.connectionType === "Static") {
+        parameterValues.push(
+          { name: "Device.IP.Interface.1.IPv4Address.1.AddressingType", value: "Static" },
+          { name: "Device.DHCPv4.Client.1.Enable", value: "0" },
+          { name: "Device.IP.Interface.1.IPv4Address.1.IPAddress", value: wanConfig.ipAddress },
+          { name: "Device.IP.Interface.1.IPv4Address.1.SubnetMask", value: wanConfig.subnetMask },
+          { name: "Device.Routing.Router.1.IPv4Forwarding.1.GatewayIPAddress", value: wanConfig.gateway }
+        );
+        if (wanConfig.primaryDns) {
+          parameterValues.push({ name: "Device.DNS.Client.Server.1.DNSServer", value: wanConfig.primaryDns });
+        }
+        if (wanConfig.secondaryDns) {
+          parameterValues.push({ name: "Device.DNS.Client.Server.2.DNSServer", value: wanConfig.secondaryDns });
+        }
+      } else if (wanConfig.connectionType === "PPPoE") {
+        parameterValues.push(
+          { name: "Device.PPP.Interface.1.Enable", value: "1" },
+          { name: "Device.PPP.Interface.1.Username", value: wanConfig.pppoeUsername },
+          { name: "Device.PPP.Interface.1.Password", value: wanConfig.pppoePassword },
+          { name: "Device.PPP.Interface.1.ConnectionTrigger", value: "AlwaysOn" }
+        );
+        if (wanConfig.pppoeServiceName) {
+          parameterValues.push({ name: "Device.PPP.Interface.1.ServiceName", value: wanConfig.pppoeServiceName });
+        }
+      }
+    } else {
       parameterValues.push(
         { name: "Device.IP.Interface.1.IPv4Address.1.AddressingType", value: "Static" },
-        { name: "Device.IP.Interface.1.IPv4Address.1.IPAddress", value: vlanConfig.ipAddress },
-        { name: "Device.IP.Interface.1.IPv4Address.1.SubnetMask", value: vlanConfig.subnetMask },
-        { name: "Device.Routing.Router.1.IPv4Forwarding.1.GatewayIPAddress", value: vlanConfig.gateway },
-        { name: "Device.DNS.Client.Server.1.DNSServer", value: vlanConfig.dnsServer }
+        { name: "Device.Bridging.Bridge.1.Enable", value: "1" },
+        { name: "Device.NAT.InterfaceSetting.1.Enable", value: "0" }
       );
-    } else if (vlanConfig.ipMode === "PPPoE") {
+    }
+
+    createTr069TaskMutation.mutate({
+      onuId: id,
+      taskType: "set_parameter_values",
+      parameters: { parameterValues },
+    });
+    setVlanDialogOpen(false);
+  };
+
+  const handleLayer2Submit = () => {
+    if (!id) return;
+    const parameterValues: { name: string; value: string }[] = [];
+
+    parameterValues.push(
+      { name: "Device.Ethernet.Interface.1.Enable", value: layer2Config.enabled ? "1" : "0" }
+    );
+
+    if (layer2Config.vlanId) {
       parameterValues.push(
-        { name: "Device.PPP.Interface.1.Enable", value: "1" },
-        { name: "Device.PPP.Interface.1.Username", value: vlanConfig.pppoeUsername },
-        { name: "Device.PPP.Interface.1.Password", value: vlanConfig.pppoePassword }
+        { name: "Device.Ethernet.VLANTermination.1.VLANID", value: layer2Config.vlanId },
+        { name: "Device.Ethernet.VLANTermination.1.Enable", value: "1" }
+      );
+      if (layer2Config.vlanTagMode === "tagged") {
+        parameterValues.push({ name: "Device.Ethernet.VLANTermination.1.X_TagMode", value: "Tagged" });
+      } else {
+        parameterValues.push({ name: "Device.Ethernet.VLANTermination.1.X_TagMode", value: "Untagged" });
+      }
+      if (layer2Config.vlanPriority) {
+        parameterValues.push({ name: "Device.Ethernet.VLANTermination.1.X_Priority", value: layer2Config.vlanPriority });
+      }
+    }
+
+    if (layer2Config.bridgeMode === "enabled" && layer2Config.bridgeVlanId) {
+      parameterValues.push(
+        { name: "Device.Bridging.Bridge.1.Enable", value: "1" },
+        { name: "Device.Bridging.Bridge.1.VLAN.1.VLANID", value: layer2Config.bridgeVlanId },
+        { name: "Device.Bridging.Bridge.1.VLAN.1.Enable", value: "1" }
       );
     }
 
@@ -1094,129 +1176,286 @@ export default function OnuDetailPage() {
       </Dialog>
 
       <Dialog open={vlanDialogOpen} onOpenChange={setVlanDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Network className="h-5 w-5" />
-              WAN/VLAN Configuration
+              Network Configuration
             </DialogTitle>
             <DialogDescription>
-              Configure network settings via TR-069
+              Configure WAN and Layer 2 settings via TR-069
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="vlan_enabled"
-                checked={vlanConfig.enabled}
-                onCheckedChange={(checked) => setVlanConfig({ ...vlanConfig, enabled: !!checked })}
-              />
-              <Label htmlFor="vlan_enabled">Enable Interface</Label>
-            </div>
-            <div className="space-y-2">
-              <Label>VLAN ID</Label>
-              <Input
-                value={vlanConfig.vlanId}
-                onChange={(e) => setVlanConfig({ ...vlanConfig, vlanId: e.target.value })}
-                placeholder="100"
-                data-testid="input-vlan-id"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>IP Mode</Label>
-              <Select
-                value={vlanConfig.ipMode}
-                onValueChange={(v) => setVlanConfig({ ...vlanConfig, ipMode: v as "DHCP" | "Static" | "PPPoE" })}
-              >
-                <SelectTrigger data-testid="select-ip-mode">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="DHCP">DHCP</SelectItem>
-                  <SelectItem value="Static">Static</SelectItem>
-                  <SelectItem value="PPPoE">PPPoE</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {vlanConfig.ipMode === "Static" && (
-              <>
+          <Tabs value={wanDialogTab} onValueChange={(v) => setWanDialogTab(v as "wan" | "layer2")}>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="wan">WAN Settings</TabsTrigger>
+              <TabsTrigger value="layer2">Layer 2 / VLAN</TabsTrigger>
+            </TabsList>
+            <TabsContent value="wan" className="space-y-4 mt-4">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="wan_enabled"
+                  checked={wanConfig.enabled}
+                  onCheckedChange={(checked) => setWanConfig({ ...wanConfig, enabled: !!checked })}
+                />
+                <Label htmlFor="wan_enabled">Enable WAN Interface</Label>
+              </div>
+              <div className="space-y-2">
+                <Label>WAN Mode</Label>
+                <Select
+                  value={wanConfig.wanMode}
+                  onValueChange={(v) => setWanConfig({ ...wanConfig, wanMode: v as "route" | "bridge" })}
+                >
+                  <SelectTrigger data-testid="select-wan-mode">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="route">Route (NAT)</SelectItem>
+                    <SelectItem value="bridge">Bridge</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {wanConfig.wanMode === "route" && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Connection Type</Label>
+                    <Select
+                      value={wanConfig.connectionType}
+                      onValueChange={(v) => setWanConfig({ ...wanConfig, connectionType: v as "DHCP" | "Static" | "PPPoE" })}
+                    >
+                      <SelectTrigger data-testid="select-connection-type">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="DHCP">DHCP (Automatic)</SelectItem>
+                        <SelectItem value="Static">Static IP</SelectItem>
+                        <SelectItem value="PPPoE">PPPoE</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="nat_enabled"
+                      checked={wanConfig.natEnabled}
+                      onCheckedChange={(checked) => setWanConfig({ ...wanConfig, natEnabled: !!checked })}
+                    />
+                    <Label htmlFor="nat_enabled">Enable NAT</Label>
+                  </div>
+                  {wanConfig.connectionType === "Static" && (
+                    <>
+                      <div className="space-y-2">
+                        <Label>IP Address</Label>
+                        <Input
+                          value={wanConfig.ipAddress}
+                          onChange={(e) => setWanConfig({ ...wanConfig, ipAddress: e.target.value })}
+                          placeholder="192.168.1.100"
+                          data-testid="input-wan-ip-address"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Subnet Mask</Label>
+                        <Input
+                          value={wanConfig.subnetMask}
+                          onChange={(e) => setWanConfig({ ...wanConfig, subnetMask: e.target.value })}
+                          placeholder="255.255.255.0"
+                          data-testid="input-wan-subnet-mask"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Gateway</Label>
+                        <Input
+                          value={wanConfig.gateway}
+                          onChange={(e) => setWanConfig({ ...wanConfig, gateway: e.target.value })}
+                          placeholder="192.168.1.1"
+                          data-testid="input-wan-gateway"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Label>Primary DNS</Label>
+                          <Input
+                            value={wanConfig.primaryDns}
+                            onChange={(e) => setWanConfig({ ...wanConfig, primaryDns: e.target.value })}
+                            placeholder="8.8.8.8"
+                            data-testid="input-primary-dns"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Secondary DNS</Label>
+                          <Input
+                            value={wanConfig.secondaryDns}
+                            onChange={(e) => setWanConfig({ ...wanConfig, secondaryDns: e.target.value })}
+                            placeholder="8.8.4.4"
+                            data-testid="input-secondary-dns"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
+                  {wanConfig.connectionType === "PPPoE" && (
+                    <>
+                      <div className="space-y-2">
+                        <Label>PPPoE Username</Label>
+                        <Input
+                          value={wanConfig.pppoeUsername}
+                          onChange={(e) => setWanConfig({ ...wanConfig, pppoeUsername: e.target.value })}
+                          placeholder="username@isp.com"
+                          data-testid="input-pppoe-username"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>PPPoE Password</Label>
+                        <Input
+                          type="password"
+                          value={wanConfig.pppoePassword}
+                          onChange={(e) => setWanConfig({ ...wanConfig, pppoePassword: e.target.value })}
+                          placeholder="password"
+                          data-testid="input-pppoe-password"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Service Name (Optional)</Label>
+                        <Input
+                          value={wanConfig.pppoeServiceName}
+                          onChange={(e) => setWanConfig({ ...wanConfig, pppoeServiceName: e.target.value })}
+                          placeholder="ISP service name"
+                          data-testid="input-pppoe-service-name"
+                        />
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+              {wanConfig.wanMode === "bridge" && (
+                <div className="p-4 bg-muted/50 rounded-md">
+                  <p className="text-sm text-muted-foreground">
+                    In Bridge mode, the ONU will pass traffic transparently without NAT. 
+                    IP configuration will be handled by the upstream device.
+                  </p>
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label>MTU</Label>
+                <Input
+                  value={wanConfig.mtu}
+                  onChange={(e) => setWanConfig({ ...wanConfig, mtu: e.target.value })}
+                  placeholder="1500"
+                  data-testid="input-wan-mtu"
+                />
+              </div>
+              <DialogFooter className="pt-4">
+                <Button variant="outline" onClick={() => setVlanDialogOpen(false)}>Cancel</Button>
+                <Button onClick={handleWanSubmit} disabled={createTr069TaskMutation.isPending} data-testid="button-save-wan">
+                  Apply WAN Settings
+                </Button>
+              </DialogFooter>
+            </TabsContent>
+            <TabsContent value="layer2" className="space-y-4 mt-4">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="layer2_enabled"
+                  checked={layer2Config.enabled}
+                  onCheckedChange={(checked) => setLayer2Config({ ...layer2Config, enabled: !!checked })}
+                />
+                <Label htmlFor="layer2_enabled">Enable Interface</Label>
+              </div>
+              <div className="space-y-2">
+                <Label>Service Type</Label>
+                <Select
+                  value={layer2Config.serviceType}
+                  onValueChange={(v) => setLayer2Config({ ...layer2Config, serviceType: v as "internet" | "voip" | "iptv" | "management" })}
+                >
+                  <SelectTrigger data-testid="select-service-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="internet">Internet</SelectItem>
+                    <SelectItem value="voip">VoIP</SelectItem>
+                    <SelectItem value="iptv">IPTV</SelectItem>
+                    <SelectItem value="management">Management</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Separator />
+              <h4 className="font-medium text-sm">VLAN Configuration</h4>
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>IP Address</Label>
+                  <Label>VLAN ID</Label>
                   <Input
-                    value={vlanConfig.ipAddress}
-                    onChange={(e) => setVlanConfig({ ...vlanConfig, ipAddress: e.target.value })}
-                    placeholder="192.168.1.100"
-                    data-testid="input-ip-address"
+                    value={layer2Config.vlanId}
+                    onChange={(e) => setLayer2Config({ ...layer2Config, vlanId: e.target.value })}
+                    placeholder="100"
+                    data-testid="input-vlan-id"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Subnet Mask</Label>
-                  <Input
-                    value={vlanConfig.subnetMask}
-                    onChange={(e) => setVlanConfig({ ...vlanConfig, subnetMask: e.target.value })}
-                    placeholder="255.255.255.0"
-                    data-testid="input-subnet-mask"
-                  />
+                  <Label>Priority (0-7)</Label>
+                  <Select
+                    value={layer2Config.vlanPriority}
+                    onValueChange={(v) => setLayer2Config({ ...layer2Config, vlanPriority: v })}
+                  >
+                    <SelectTrigger data-testid="select-vlan-priority">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[0, 1, 2, 3, 4, 5, 6, 7].map((p) => (
+                        <SelectItem key={p} value={String(p)}>{p}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Tag Mode</Label>
+                <Select
+                  value={layer2Config.vlanTagMode}
+                  onValueChange={(v) => setLayer2Config({ ...layer2Config, vlanTagMode: v as "tagged" | "untagged" })}
+                >
+                  <SelectTrigger data-testid="select-tag-mode">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="tagged">Tagged</SelectItem>
+                    <SelectItem value="untagged">Untagged</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Separator />
+              <h4 className="font-medium text-sm">Bridge Settings</h4>
+              <div className="space-y-2">
+                <Label>Bridge Mode</Label>
+                <Select
+                  value={layer2Config.bridgeMode}
+                  onValueChange={(v) => setLayer2Config({ ...layer2Config, bridgeMode: v as "disabled" | "enabled" })}
+                >
+                  <SelectTrigger data-testid="select-bridge-mode">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="disabled">Disabled</SelectItem>
+                    <SelectItem value="enabled">Enabled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {layer2Config.bridgeMode === "enabled" && (
                 <div className="space-y-2">
-                  <Label>Gateway</Label>
+                  <Label>Bridge VLAN ID</Label>
                   <Input
-                    value={vlanConfig.gateway}
-                    onChange={(e) => setVlanConfig({ ...vlanConfig, gateway: e.target.value })}
-                    placeholder="192.168.1.1"
-                    data-testid="input-gateway"
+                    value={layer2Config.bridgeVlanId}
+                    onChange={(e) => setLayer2Config({ ...layer2Config, bridgeVlanId: e.target.value })}
+                    placeholder="100"
+                    data-testid="input-bridge-vlan-id"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label>DNS Server</Label>
-                  <Input
-                    value={vlanConfig.dnsServer}
-                    onChange={(e) => setVlanConfig({ ...vlanConfig, dnsServer: e.target.value })}
-                    placeholder="8.8.8.8"
-                    data-testid="input-dns-server"
-                  />
-                </div>
-              </>
-            )}
-            {vlanConfig.ipMode === "PPPoE" && (
-              <>
-                <div className="space-y-2">
-                  <Label>PPPoE Username</Label>
-                  <Input
-                    value={vlanConfig.pppoeUsername}
-                    onChange={(e) => setVlanConfig({ ...vlanConfig, pppoeUsername: e.target.value })}
-                    placeholder="username"
-                    data-testid="input-pppoe-username"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>PPPoE Password</Label>
-                  <Input
-                    type="password"
-                    value={vlanConfig.pppoePassword}
-                    onChange={(e) => setVlanConfig({ ...vlanConfig, pppoePassword: e.target.value })}
-                    placeholder="password"
-                    data-testid="input-pppoe-password"
-                  />
-                </div>
-              </>
-            )}
-            <div className="space-y-2">
-              <Label>MTU</Label>
-              <Input
-                value={vlanConfig.mtu}
-                onChange={(e) => setVlanConfig({ ...vlanConfig, mtu: e.target.value })}
-                placeholder="1500"
-                data-testid="input-mtu"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setVlanDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleVlanSubmit} disabled={createTr069TaskMutation.isPending} data-testid="button-save-vlan">
-              Apply WAN Settings
-            </Button>
-          </DialogFooter>
+              )}
+              <DialogFooter className="pt-4">
+                <Button variant="outline" onClick={() => setVlanDialogOpen(false)}>Cancel</Button>
+                <Button onClick={handleLayer2Submit} disabled={createTr069TaskMutation.isPending} data-testid="button-save-layer2">
+                  Apply Layer 2 Settings
+                </Button>
+              </DialogFooter>
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
 
