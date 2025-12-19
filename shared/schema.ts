@@ -553,6 +553,11 @@ export const vpnProfiles = pgTable("vpn_profiles", {
   mikrotikScript: text("mikrotik_script"), // MikroTik client configuration
   vpsFirewallScript: text("vps_firewall_script"), // VPS server firewall rules (iptables)
   scriptGeneratedAt: timestamp("script_generated_at"),
+  // VPS provisioning status
+  provisioningStatus: varchar("provisioning_status", { length: 50 }).default("pending"), // pending, running, success, failed
+  provisioningMessage: text("provisioning_message"),
+  provisioningErrors: text("provisioning_errors").array(),
+  provisionedAt: timestamp("provisioned_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

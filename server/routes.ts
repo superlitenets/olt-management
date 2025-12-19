@@ -2058,7 +2058,41 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
         mikrotikScript,
         vpsFirewallScript,
         scriptGeneratedAt: new Date(),
+        provisioningStatus: "running",
       }) || profile;
+      
+      // Auto-provision VPS firewall and OpenVPN configuration
+      const { vpsProvisioner } = await import("./vpn/vps-provisioner");
+      
+      // Run provisioning asynchronously (don't block response)
+      (async () => {
+        try {
+          const result = await vpsProvisioner.provisionVpnTunnel(profile, {
+            configureOpenvpn: true,
+            restartOpenvpn: false, // Don't auto-restart, let admin handle that
+          });
+          
+          await storage.updateVpnProfile(profile.id, {
+            provisioningStatus: result.status,
+            provisioningMessage: result.message,
+            provisioningErrors: result.errors.length > 0 ? result.errors : null,
+            provisionedAt: result.status === "success" ? new Date() : null,
+          });
+          
+          // Broadcast update
+          const updatedProfile = await storage.getVpnProfile(profile.id);
+          if (updatedProfile) {
+            broadcast("vpnProfile:updated", updatedProfile);
+          }
+        } catch (error) {
+          console.error("[VPN Provisioning] Error:", error);
+          await storage.updateVpnProfile(profile.id, {
+            provisioningStatus: "failed",
+            provisioningMessage: error instanceof Error ? error.message : "Provisioning failed",
+            provisioningErrors: [error instanceof Error ? error.message : "Unknown error"],
+          });
+        }
+      })();
       
       broadcast("vpnProfile:created", profile);
       res.status(201).json(profile);
@@ -2095,7 +2129,43 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
           mikrotikScript,
           vpsFirewallScript,
           scriptGeneratedAt: new Date(),
+          provisioningStatus: "running",
         }) || profile;
+        
+        // Re-provision VPS firewall rules when IPs change
+        const needsReprovisioning = data.tr069Ips !== undefined || data.managementIps !== undefined;
+        if (needsReprovisioning) {
+          const { vpsProvisioner } = await import("./vpn/vps-provisioner");
+          
+          // Run provisioning asynchronously
+          (async () => {
+            try {
+              const result = await vpsProvisioner.provisionVpnTunnel(profile, {
+                configureOpenvpn: true,
+                restartOpenvpn: false,
+              });
+              
+              await storage.updateVpnProfile(profile.id, {
+                provisioningStatus: result.status,
+                provisioningMessage: result.message,
+                provisioningErrors: result.errors.length > 0 ? result.errors : null,
+                provisionedAt: result.status === "success" ? new Date() : null,
+              });
+              
+              const updatedProfile = await storage.getVpnProfile(profile.id);
+              if (updatedProfile) {
+                broadcast("vpnProfile:updated", updatedProfile);
+              }
+            } catch (error) {
+              console.error("[VPN Provisioning] Error:", error);
+              await storage.updateVpnProfile(profile.id, {
+                provisioningStatus: "failed",
+                provisioningMessage: error instanceof Error ? error.message : "Provisioning failed",
+                provisioningErrors: [error instanceof Error ? error.message : "Unknown error"],
+              });
+            }
+          })();
+        }
       }
       
       broadcast("vpnProfile:updated", profile);
@@ -2106,6 +2176,53 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
       }
       console.error("Error updating VPN profile:", error);
       res.status(500).json({ message: "Failed to update VPN profile" });
+    }
+  });
+  
+  // Manually trigger reprovisioning for VPN tunnel
+  app.post("/api/vpn/profiles/:id/reprovision", isAuthenticated, async (req: any, res) => {
+    try {
+      const profile = await storage.getVpnProfile(req.params.id);
+      if (!profile) {
+        return res.status(404).json({ message: "VPN profile not found" });
+      }
+      
+      // Update status to running
+      await storage.updateVpnProfile(profile.id, {
+        provisioningStatus: "running",
+        provisioningMessage: "Reprovisioning started",
+      });
+      
+      const { vpsProvisioner } = await import("./vpn/vps-provisioner");
+      const result = await vpsProvisioner.provisionVpnTunnel(profile, {
+        configureOpenvpn: true,
+        restartOpenvpn: false,
+      });
+      
+      const updatedProfile = await storage.updateVpnProfile(profile.id, {
+        provisioningStatus: result.status,
+        provisioningMessage: result.message,
+        provisioningErrors: result.errors.length > 0 ? result.errors : null,
+        provisionedAt: result.status === "success" ? new Date() : null,
+      });
+      
+      broadcast("vpnProfile:updated", updatedProfile);
+      res.json({ result, profile: updatedProfile });
+    } catch (error) {
+      console.error("Error reprovisioning VPN tunnel:", error);
+      res.status(500).json({ message: "Failed to reprovision VPN tunnel" });
+    }
+  });
+  
+  // Get VPS provisioning capabilities
+  app.get("/api/vpn/provisioning/capabilities", isAuthenticated, async (req, res) => {
+    try {
+      const { vpsProvisioner } = await import("./vpn/vps-provisioner");
+      const capabilities = await vpsProvisioner.getEnvironmentCapabilities();
+      res.json(capabilities);
+    } catch (error) {
+      console.error("Error checking provisioning capabilities:", error);
+      res.status(500).json({ message: "Failed to check provisioning capabilities" });
     }
   });
   
@@ -2240,6 +2357,21 @@ ${gateway.persistentKeepalive ? `PersistentKeepalive = ${gateway.persistentKeepa
 
   app.delete("/api/vpn/profiles/:id", isAuthenticated, async (req, res) => {
     try {
+      // Get the profile first for deprovisioning
+      const profile = await storage.getVpnProfile(req.params.id);
+      
+      // Deprovision VPS firewall rules before deleting
+      if (profile) {
+        try {
+          const { vpsProvisioner } = await import("./vpn/vps-provisioner");
+          await vpsProvisioner.deprovisionVpnTunnel(profile);
+          console.log(`[VPN] Deprovisioned tunnel: ${profile.name}`);
+        } catch (deprovisionError) {
+          console.error(`[VPN] Failed to deprovision tunnel: ${profile.name}`, deprovisionError);
+          // Continue with deletion even if deprovisioning fails
+        }
+      }
+      
       await storage.deleteVpnProfile(req.params.id);
       broadcast("vpnProfile:deleted", { id: req.params.id });
       res.status(204).send();

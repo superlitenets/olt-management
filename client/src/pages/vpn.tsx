@@ -63,7 +63,10 @@ import {
   Loader2,
   Wifi,
   WifiOff,
+  Clock,
+  RotateCcw,
 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { VpnProfile } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
 
@@ -226,6 +229,7 @@ export default function VpnPage() {
   const [connectingProfiles, setConnectingProfiles] = useState<Set<string>>(new Set());
   const [disconnectingProfiles, setDisconnectingProfiles] = useState<Set<string>>(new Set());
   const [testingProfiles, setTestingProfiles] = useState<Set<string>>(new Set());
+  const [reprovisioningProfiles, setReprovisioningProfiles] = useState<Set<string>>(new Set());
 
   const connectMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -325,6 +329,46 @@ export default function VpnPage() {
       toast({
         title: "Test Failed",
         description: error.message || "Failed to test VPN configuration",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const reprovisionMutation = useMutation({
+    mutationFn: async (id: string) => {
+      setReprovisioningProfiles(prev => new Set(prev).add(id));
+      const response = await apiRequest("POST", `/api/vpn/profiles/${id}/reprovision`);
+      return response.json();
+    },
+    onSuccess: (data, id) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vpn/profiles"] });
+      setReprovisioningProfiles(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      if (data.result?.status === "success") {
+        toast({
+          title: "VPS Provisioned",
+          description: "Firewall rules and OpenVPN configuration applied successfully",
+        });
+      } else {
+        toast({
+          title: "Provisioning Complete",
+          description: data.result?.message || "VPS provisioning completed with warnings",
+          variant: data.result?.errors?.length ? "destructive" : "default",
+        });
+      }
+    },
+    onError: (error: Error, id) => {
+      setReprovisioningProfiles(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      toast({
+        title: "Provisioning Failed",
+        description: error.message || "Failed to provision VPS",
         variant: "destructive",
       });
     },
@@ -531,6 +575,7 @@ export default function VpnPage() {
                   <TableHead>Name</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead>Authentication</TableHead>
+                  <TableHead>VPS Provisioning</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
@@ -554,6 +599,38 @@ export default function VpnPage() {
                       ) : (
                         <Badge variant="outline">Certificate Only</Badge>
                       )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {profile.provisioningStatus === "success" ? (
+                          <Badge variant="default" className="bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20">
+                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                            Provisioned
+                          </Badge>
+                        ) : profile.provisioningStatus === "running" ? (
+                          <Badge variant="secondary">
+                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                            Provisioning
+                          </Badge>
+                        ) : profile.provisioningStatus === "failed" ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Badge variant="destructive" className="cursor-help">
+                                <AlertTriangle className="h-3 w-3 mr-1" />
+                                Failed
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>{profile.provisioningMessage || "Provisioning failed"}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          <Badge variant="outline">
+                            <Clock className="h-3 w-3 mr-1" />
+                            Pending
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       {environment?.canEstablishVpn ? (
@@ -674,6 +751,18 @@ export default function VpnPage() {
                           >
                             <Server className="h-4 w-4 mr-2" />
                             OpenVPN Server Config
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => reprovisionMutation.mutate(profile.id)}
+                            disabled={reprovisioningProfiles.has(profile.id)}
+                            data-testid={`button-reprovision-${profile.id}`}
+                          >
+                            {reprovisioningProfiles.has(profile.id) ? (
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : (
+                              <RotateCcw className="h-4 w-4 mr-2" />
+                            )}
+                            Reprovision VPS
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => openEditProfile(profile)}
